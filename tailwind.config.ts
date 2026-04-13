@@ -9,9 +9,28 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        bg: "var(--bg)",
+        surface: "var(--surface)",
+        border: "var(--border)",
+        accent: "var(--accent)",
+        text: "var(--text)",
+        dim: "var(--dim)",
+        'code-bg': "var(--code-bg)",
+        green: "var(--green)",
+        red: "var(--red)",
+        yellow: "var(--yellow)",
       },
+      borderRadius: {
+        'none': '0',
+        'sm': '0',
+        DEFAULT: '0',
+        'md': '0',
+        'lg': '0',
+        'xl': '0',
+        '2xl': '0',
+        '3xl': '0',
+        'full': '0',
+      }
     },
   },
   plugins: [],
