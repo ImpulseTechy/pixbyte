@@ -4,7 +4,7 @@ import { useRef, useEffect } from 'react';
 import { OLEDAnimation, animations } from '@/data/animations';
 import OLEDCanvas from './OLEDCanvas';
 
-const CATEGORIES = ['all', 'emoji', 'icons', 'loaders', 'indian', 'festival', 'text_fx'];
+const CATEGORIES = ['all', 'emoji', 'robot_eyes', 'icons', 'loaders', 'indian', 'festival', 'text_fx'];
 const SIZES = [32, 48, 64] as const;
 
 interface Props {
@@ -154,7 +154,7 @@ export default function LeftPanel({
                       {anim.name}
                     </div>
                     <div className="text-dim text-[11px]">
-                      {"//"} GFX · {anim.totalFrames} frames · {Math.round(1000/anim.fps)}ms
+                      {"//"} GFX · {anim.category === 'robot_eyes' ? 'rounded_rect' : `${anim.totalFrames} frames`} · {Math.round(1000/anim.fps)}ms
                     </div>
                   </div>
                 </div>

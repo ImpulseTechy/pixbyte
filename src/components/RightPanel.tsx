@@ -16,17 +16,70 @@ export default function RightPanel({ animation, size }: Props) {
   const [copied, setCopied] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   
-  const [previewRunning, setPreviewRunning] = useState(false);
-  const [flashModalOpen, setFlashModalOpen] = useState(false);
-  const [flashProgress, setFlashProgress] = useState<'idle' | 'writing' | 'success' | 'error'>('idle');
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
+  const [microPythonModalOpen, setMicroPythonModalOpen] = useState(false);
 
-  const { connectionState, logs, clearLogs, hasMicroPython, executeRawRepl, sendData } = useSerial();
+  const [prereqCollapsed, setPrereqCollapsed] = useState(false);
+  const [prereqErrorHighlight, setPrereqErrorHighlight] = useState<number | null>(null);
+  const [prereqSuccessFlash, setPrereqSuccessFlash] = useState(false);
+
+  const { connectionState, logs, clearLogs, hasMicroPython, runAnimationOnDevice, stopAnimation, addLog, isAnimationRunning } = useSerial();
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const codeEl = document.getElementById('code-output-scroll');
     if (codeEl) codeEl.scrollTop = 0;
   }, [animation, activeCodeTab, size]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('prereq_collapsed');
+    if (saved === 'true') {
+      setPrereqCollapsed(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (logs.length === 0) return;
+    const lastLog = logs[logs.length - 1];
+    
+    // Check for raw REPL error
+    if (lastLog.includes('raw REPL not detected')) {
+      setPrereqErrorHighlight(1);
+      setPrereqCollapsed(false);
+      localStorage.setItem('prereq_collapsed', 'false');
+    }
+    // Check for ssd1306 module missing 
+    else if (lastLog.includes('ImportError') && lastLog.includes('ssd1306')) {
+      setPrereqErrorHighlight(2);
+      setPrereqCollapsed(false);
+      localStorage.setItem('prereq_collapsed', 'false');
+    }
+    // Check for I2C and Wiring issues (OSError typically with I2C or ENODEV)
+    else if (lastLog.includes('OSError') && (lastLog.includes('I2C') || lastLog.includes('ENODEV') || lastLog.includes('19') || lastLog.includes('I2C bus error'))) {
+      setPrereqErrorHighlight(3);
+      setPrereqCollapsed(false);
+      localStorage.setItem('prereq_collapsed', 'false');
+    }
+    // Check for success
+    else if (lastLog.includes('animation running ✓')) {
+      setPrereqSuccessFlash(true);
+      setTimeout(() => setPrereqSuccessFlash(false), 2000);
+      setPrereqErrorHighlight(null);
+    }
+  }, [logs]);
+
+  const togglePrereq = () => {
+    const newState = !prereqCollapsed;
+    setPrereqCollapsed(newState);
+    localStorage.setItem('prereq_collapsed', newState.toString());
+  };
+
+  const downloadSsd1306 = () => {
+    const link = document.createElement('a');
+    link.href = '/ssd1306.py';
+    link.download = 'ssd1306.py';
+    link.click();
+  };
 
   useEffect(() => {
     if (terminalOpen && terminalEndRef.current) {
@@ -59,88 +112,18 @@ export default function RightPanel({ animation, size }: Props) {
   };
 
   const togglePreview = async () => {
-    if (previewRunning) {
-      try {
-        await sendData("\x03"); // Ctrl+C
-        await new Promise(r => setTimeout(r, 100));
-        await sendData("\x01"); // Ctrl+A
-        await new Promise(r => setTimeout(r, 100));
-        const stopCode = `
-import machine
-from ssd1306 import SSD1306_I2C
-i2c = machine.I2C(0, scl=machine.Pin(22), sda=machine.Pin(21))
-oled = SSD1306_I2C(128, 64, i2c)
-oled.fill(0)
-oled.show()
-`;
-        await sendData(stopCode);
-        await new Promise(r => setTimeout(r, 50));
-        await sendData("\x04"); // Ctrl+D
-        await new Promise(r => setTimeout(r, 100));
-        await sendData("\x02"); // Ctrl+B exit
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setPreviewRunning(false);
-      }
+    if (isAnimationRunning) {
+      await stopAnimation();
     } else {
-      if (!hasMicroPython) {
-        setTerminalOpen(true);
-        // Error already handled / shown via context?
-        return;
-      }
-      setPreviewRunning(true);
-      try {
-        const code = animation.getMicroPythonCode(size);
-        const res = await executeRawRepl(code, false); // Don't wait for OK closely, just stream
-        // Stream will be active in terminal
-      } catch (e: any) {
-        setPreviewRunning(false);
-      }
-    }
-  };
-
-  const handleFlash = async () => {
-    setFlashProgress('writing');
-    try {
-      const code = animation.getMicroPythonCode(size);
-      
-      // Need to write file using f = open('main.py', 'w')
-      // To avoid massive string chunking crashes, we will loop writes.
-      await sendData("\x03");
-      await new Promise(r => setTimeout(r, 200));
-      await sendData("\x01");
-      await new Promise(r => setTimeout(r, 100));
-      
-      const setupCode = `f = open('main.py', 'w')\n`;
-      await sendData(setupCode);
-      await new Promise(r => setTimeout(r, 50));
-      
-      // Send chunks as f.write()
-      const chunkSize = 128;
-      for (let i = 0; i < code.length; i += chunkSize) {
-         let chunk = code.substring(i, i + chunkSize);
-         // basic escape
-         chunk = chunk.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
-         await sendData(`f.write("${chunk}")\n`);
-         await new Promise(r => setTimeout(r, 50));
-      }
-      
-      await sendData(`f.close()\n`);
-      await new Promise(r => setTimeout(r, 50));
-      await sendData("\x04"); // Execute all the lines buffered in raw repl
-
-      setFlashProgress('success');
-    } catch(e) {
-      setFlashProgress('error');
-    } finally {
-      // Exit raw repl
-      try { await sendData("\x02"); } catch(e){}
+      setTerminalOpen(true);
+      let codeStr = animation.getMicroPythonCode(size);
+      await runAnimationOnDevice(codeStr);
     }
   };
 
   const isConnected = connectionState === 'CONNECTED';
-  const disabledTitle = !isConnected ? "// connect esp32 to enable" : (!hasMicroPython ? "// micropython required" : "");
+  const runTooltip = !isConnected ? "// connect esp32 to enable" : "// connect esp32 · requires micropython";
+  const flashTooltip = "// download .ino · open in arduino ide";
 
   const codeToShow = activeCodeTab === 'arduino_c++' 
     ? animation.getArduinoCode(size)
@@ -173,30 +156,25 @@ oled.show()
       {/* SECTION 2: Action Buttons */}
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full max-w-[512px] mx-auto">
         <button 
-          disabled={!isConnected || (!hasMicroPython && !previewRunning)}
-          title={disabledTitle}
+          disabled={!isConnected}
+          title={runTooltip}
           onClick={togglePreview}
           className={`px-3 py-2 border transition-colors text-[10px] sm:text-xs uppercase ${
-            previewRunning 
+            isAnimationRunning 
               ? "border-red text-red hover:bg-red/10 cursor-pointer"
-              : (isConnected && hasMicroPython 
+              : (isConnected 
                   ? "border-accent text-accent hover:bg-accent/10 cursor-pointer" 
                   : "border-dim text-dim disabled:opacity-50 disabled:cursor-not-allowed")
           }`}
         >
-          {previewRunning ? "⏹ stop_preview" : "▶ run_on_device"}
+          {isAnimationRunning ? "⏹ stop_preview" : "▶ run_on_device"}
         </button>
         <button 
-          disabled={!isConnected || !hasMicroPython}
-          title={disabledTitle}
-          onClick={() => { setFlashProgress('idle'); setFlashModalOpen(true); }}
-          className={`px-3 py-2 border transition-colors text-[10px] sm:text-xs uppercase ${
-            isConnected && hasMicroPython
-              ? "border-accent text-accent hover:bg-accent/10 cursor-pointer" 
-              : "border-dim text-dim disabled:opacity-50 disabled:cursor-not-allowed"
-          }`}
+          title={flashTooltip}
+          onClick={() => setDownloadModalOpen(true)}
+          className="px-3 py-2 border transition-colors text-[10px] sm:text-xs uppercase border-accent text-accent hover:bg-accent/10 cursor-pointer"
         >
-          ⬆ flash_firmware
+          ↓ download & flash
         </button>
         <button 
           onClick={handleCopy}
@@ -223,6 +201,91 @@ oled.show()
           <span>↓ download</span>
           <span className="text-[8px] opacity-75">{activeCodeTab === 'micropython' ? '.py' : '.ino'}</span>
         </button>
+      </section>
+
+      {/* SECTION 2.5: Prerequisites Card */}
+      <section className="w-full max-w-[512px] mx-auto bg-surface border border-border mt-4 font-mono text-[11px]">
+        <div 
+          onClick={togglePrereq}
+          className={`flex items-center justify-between p-2 cursor-pointer hover:bg-white/5 transition-colors ${!prereqCollapsed ? 'border-b border-border' : ''}`}
+        >
+          <div className="text-text">
+            <span className="text-dim">{"// "}</span>run_on_device · setup required
+          </div>
+          <div className="text-dim">{prereqCollapsed ? '[▶]' : '[▼]'}</div>
+        </div>
+
+        {!prereqCollapsed && (
+          <div className="p-4 pt-2 flex flex-col space-y-4">
+            
+            {/* Step 1 */}
+            <div className={`flex flex-col space-y-1 transition-colors ${
+              prereqErrorHighlight === 1 ? 'bg-red/10 border-l-[3px] border-red pl-2 -ml-[3px]' : 
+              prereqSuccessFlash ? 'bg-green/10 border-l-[3px] border-green pl-2 -ml-[3px]' : ''
+            }`}>
+              <div className="text-text mt-1">
+                <span className="text-accent pr-1">①</span> flash micropython firmware to your esp32
+              </div>
+              <a 
+                href="https://micropython.org/download/ESP32_GENERIC/" 
+                target="_blank" 
+                rel="noreferrer"
+                className="w-fit mt-1 px-[10px] py-1 border border-accent text-accent hover:bg-accent/10 transition-colors uppercase cursor-pointer block text-center"
+              >
+                [↓ download micropython]
+              </a>
+              <div className="text-dim">
+                {"// one-time setup · takes ~2 min"}
+                {prereqErrorHighlight === 1 && <span className="text-red ml-2">· micropython not found on device</span>}
+              </div>
+            </div>
+
+            {/* Step 2 */}
+            <div className={`flex flex-col space-y-1 transition-colors ${
+              prereqErrorHighlight === 2 ? 'bg-red/10 border-l-[3px] border-red pl-2 -ml-[3px]' : 
+              prereqSuccessFlash ? 'bg-green/10 border-l-[3px] border-green pl-2 -ml-[3px]' : ''
+            }`}>
+              <div className="text-text mt-1">
+                <span className="text-accent pr-1">②</span> upload ssd1306.py to your board
+              </div>
+              <button 
+                onClick={downloadSsd1306}
+                className="w-fit mt-1 px-[10px] py-1 border border-accent border-solid text-accent hover:bg-accent/10 transition-colors uppercase cursor-pointer bg-transparent text-left"
+              >
+                [↓ download ssd1306.py]
+              </button>
+              <div className="text-dim">
+                {"// place in /lib folder on your esp32"}
+                {prereqErrorHighlight === 2 && <span className="text-red ml-2">· ssd1306.py not found on device</span>}
+              </div>
+            </div>
+
+            {/* Step 3 */}
+            <div className={`flex flex-col space-y-1 transition-colors ${
+              prereqErrorHighlight === 3 ? 'bg-red/10 border-l-[3px] border-red pl-2 -ml-[3px]' : 
+              prereqSuccessFlash ? 'bg-green/10 border-l-[3px] border-green pl-2 -ml-[3px]' : ''
+            }`}>
+              <div className="text-text mt-1">
+                <span className="text-accent pr-1">③</span> wire your oled display
+              </div>
+              <div className="text-text ml-5 leading-tight mt-1">
+                SDA → <span className="text-accent">GPIO21</span> · SCL → <span className="text-accent">GPIO22</span>
+                <br/>
+                VCC → <span className="text-accent">3.3V</span> · GND → <span className="text-accent">GND</span>
+              </div>
+              {prereqErrorHighlight === 3 && (
+                <div className="text-red mt-1">{"// oled not detected · check wiring"}</div>
+              )}
+            </div>
+
+            <div className="text-green pt-3 border-t border-border mt-3 leading-tight">
+              {"// arduino_c++ tab works without any of this"}
+              <br/>
+              {"// copy code → arduino ide → upload directly"}
+            </div>
+            
+          </div>
+        )}
       </section>
 
       {/* SECTION 3: Code Output */}
@@ -284,9 +347,17 @@ oled.show()
               [clear]
             </button>
             <div className="flex flex-col mt-1">
-              {logs.map((log, i) => (
-                <span key={i}>{log}</span>
-              ))}
+              {logs.map((log, i) => {
+                if (log === "[[MIP_INSTALL_BUTTON]]") {
+                  return null;
+                }
+                
+                let colorClass = "";
+                if (log.includes("adjusting address") || log.includes("warning")) colorClass = "text-yellow";
+                if (log.includes("no devices found") || log.includes("ERR:")) colorClass = "text-red";
+                
+                return <span key={i} className={colorClass}>{log}</span>;
+              })}
               <div className="flex items-center">
                 <span>&gt;</span>
                 <span className="w-2 h-3 bg-green animate-pulse ml-1 inline-block"></span>
@@ -297,47 +368,98 @@ oled.show()
         )}
       </section>
 
-      {/* Flash Firmware Modal */}
-      {flashModalOpen && (
+      {/* MicroPython Guided Setup Modal */}
+      {microPythonModalOpen && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm p-4">
-          <div className="bg-surface border border-border w-full max-w-sm shadow-2xl font-mono text-sm">
-            <div className="border-b border-border p-3 text-dim text-xs">
-              {"//"} flash_firmware
-            </div>
-            <div className="p-4 space-y-4 text-xs">
-              <p className="text-text leading-relaxed">
-                this will write main.py to your esp32.<br/>
-                requires micropython already installed.<br/>
-                existing main.py will be overwritten.
-              </p>
-              <div className="text-accent bg-accent/10 px-2 py-1 border border-accent/20">
-                selected: {animation.name} · {size}px
-              </div>
-              
-              {/* Progress Indicators */}
-              <div className="h-6 flex items-center">
-                {flashProgress === 'writing' && <span className="text-dim">{"// writing main.py... [████████░░] 80%"}</span>}
-                {flashProgress === 'success' && <span className="text-green">{"// ✓ main.py written · replug your esp32"}</span>}
-                {flashProgress === 'error' && <span className="text-red">{"// ✕ write failed · see serial monitor"}</span>}
-              </div>
+          <div className="bg-surface border border-border w-full max-w-md shadow-2xl font-mono text-sm flex flex-col p-6 space-y-6">
+            <div className="text-yellow text-xs">{"// micropython_required"}</div>
+            
+            <p className="text-text leading-relaxed text-xs">
+              run_on_device streams live animation to your<br/>
+              esp32 using micropython repl.<br/><br/>
+              your esp32 needs micropython firmware first.<br/>
+              this is a one-time setup, takes ~2 minutes.
+            </p>
 
-              {flashProgress !== 'idle' && (
-                <button 
-                  onClick={handleDownload}
-                  className="text-dim hover:text-accent underline block"
-                >
-                  [↓ download main.py fallback]
-                </button>
-              )}
+            <div className="flex flex-col space-y-3">
+              <a href="https://micropython.org/download/ESP32_GENERIC" target="_blank" rel="noreferrer" className="w-full text-center px-4 py-3 border border-border text-dim hover:border-accent hover:text-accent transition-colors text-xs uppercase block">
+                [→ download micropython for esp32]
+              </a>
+              <a href="https://micropython.org/download/ESP32_GENERIC/#installation" target="_blank" rel="noreferrer" className="w-full text-center px-4 py-3 border border-border text-dim hover:border-accent hover:text-accent transition-colors text-xs uppercase block">
+                [→ how to flash micropython]
+              </a>
             </div>
-            <div className="border-t border-border p-3 flex justify-end space-x-3">
-               <button onClick={() => setFlashModalOpen(false)} className="px-4 py-2 border border-dim text-dim hover:text-text text-xs uppercase">
-                 [cancel]
-               </button>
-               <button onClick={handleFlash} disabled={flashProgress === 'writing'} className="px-4 py-2 border border-accent text-accent hover:bg-accent/10 text-xs uppercase disabled:opacity-50">
-                 [confirm_flash]
-               </button>
+
+            <div className="text-dim text-xs opacity-75">
+              {"// after flashing, come back and click"}
+              <br/>{"// run_on_device again"}
             </div>
+
+            <button onClick={() => setMicroPythonModalOpen(false)} className="w-full px-4 py-3 border border-dim text-dim hover:text-text text-xs uppercase">
+              [got it · close]
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Download & Flash Modal */}
+      {downloadModalOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm p-4">
+          <div className="bg-surface border border-border w-full max-w-lg shadow-2xl font-mono text-sm flex flex-col p-6 space-y-6">
+            <div className="text-dim text-xs">{"// get_code_on_your_esp32"}</div>
+            
+            <p className="text-text text-xs">choose your method:</p>
+
+            {/* Option A */}
+            <div className="border border-border p-4 flex flex-col space-y-4">
+              <div className="text-accent text-xs">OPTION A · arduino ide (recommended)</div>
+              <ul className="text-dim text-xs space-y-2">
+                <li>1. click download below</li>
+                <li>2. open .ino file in arduino ide</li>
+                <li>3. select your board: ESP32 Dev Module</li>
+                <li>4. select port and upload</li>
+              </ul>
+              <button 
+                onClick={() => {
+                  const code = animation.getArduinoCode(size);
+                  const blob = new Blob([code], { type: 'text/plain' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `${animation.name}.ino`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }}
+                className="w-full px-4 py-3 border border-accent text-accent hover:bg-accent/10 transition-colors text-xs uppercase"
+              >
+                [↓ download {animation.name}.ino]
+              </button>
+            </div>
+
+            {/* Option B */}
+            <div className="border border-border p-4 flex flex-col space-y-4">
+              <div className="text-accent text-xs">OPTION B · micropython (run_on_device)</div>
+              <p className="text-dim text-xs leading-relaxed">
+                if you have micropython installed,<br/>
+                use run_on_device to stream animation<br/>
+                live — no upload needed.
+              </p>
+              <button 
+                onClick={() => {
+                  setDownloadModalOpen(false);
+                  togglePreview();
+                }}
+                className="w-full px-4 py-3 border border-border text-text hover:border-accent hover:text-accent transition-colors text-xs uppercase"
+              >
+                [→ use run_on_device instead]
+              </button>
+            </div>
+
+            <button onClick={() => setDownloadModalOpen(false)} className="w-full px-4 py-3 bg-transparent text-dim hover:text-text transition-colors text-xs uppercase">
+              [close]
+            </button>
           </div>
         </div>
       )}

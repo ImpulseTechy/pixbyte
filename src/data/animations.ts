@@ -1,7 +1,7 @@
 export interface OLEDAnimation {
   id: string;
   name: string;
-  category: 'emoji' | 'icons' | 'loaders' | 'indian' | 'festival' | 'text_fx';
+  category: 'emoji' | 'robot_eyes' | 'icons' | 'loaders' | 'indian' | 'festival' | 'text_fx';
   tags: string[];
   supportedSizes: (32 | 48 | 64)[];
   fps: number;
@@ -103,6 +103,119 @@ while True:
     }
   };
 };
+const createRobotEyeAnimation = (
+  id: string,
+  name: string,
+  tags: string[],
+  fps: number,
+  totalFrames: number,
+  drawFrame: (ctx: CanvasRenderingContext2D, frameIndex: number, size: number) => void,
+  arduinoDrawCalls: string,
+  microPythonDrawCalls: string
+): OLEDAnimation => {
+  return {
+    id,
+    name,
+    category: 'robot_eyes',
+    tags,
+    supportedSizes: [64],
+    fps,
+    totalFrames,
+    byteCount: getByteCount(64),
+    frames: {},
+    drawFrame,
+    getArduinoCode: (size: number) => {
+      const delay = Math.round(1000 / fps);
+      return `#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// 0x1306.dev · animation: ${name} · robot_eyes · ${delay}ms
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+void drawEyes(int lx, int ly, int lw, int lh, int lr,
+              int rx, int ry, int rw, int rh, int rr) {
+  display.fillRoundRect(lx - lw/2, ly - lh/2, lw, lh, lr, WHITE);
+  display.fillRoundRect(rx - rw/2, ry - rh/2, rw, rh, rr, WHITE);
+}
+
+void drawFrame(int frame) {
+  display.clearDisplay();
+${arduinoDrawCalls}
+  display.display();
+}
+
+void setup() {
+  Wire.begin(21, 22);
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+}
+
+void loop() {
+  for (int i = 0; i < ${totalFrames}; i++) {
+    drawFrame(i);
+    delay(${delay});
+  }
+}`;
+    },
+    getMicroPythonCode: (size: number) => {
+      const delay = Math.round(1000 / fps);
+      return `# 0x1306.dev · animation: ${name} · robot_eyes · ${delay}ms
+import machine, ssd1306, time
+
+i2c = machine.I2C(0, scl=machine.Pin(22), sda=machine.Pin(21), freq=400000)
+oled = ssd1306.SSD1306_I2C(128, 64, i2c)
+
+def fill_round_rect(x, y, w, h, r, c=1):
+    if r < 1: r = 1
+    oled.fill_rect(x + r, y, w - 2*r, h, c)
+    oled.fill_rect(x, y + r, r, h - 2*r, c)
+    oled.fill_rect(x + w - r, y + r, r, h - 2*r, c)
+    oled.ellipse(x + r,     y + r,     r, r, c, 0b0001)
+    oled.ellipse(x + w - r, y + r,     r, r, c, 0b0010)
+    oled.ellipse(x + r,     y + h - r, r, r, c, 0b0100)
+    oled.ellipse(x + w - r, y + h - r, r, r, c, 0b1000)
+
+def draw_eyes(lx, ly, lw, lh, lr, rx, ry, rw, rh, rr):
+    fill_round_rect(lx - lw//2, ly - lh//2, lw, lh, lr)
+    fill_round_rect(rx - rw//2, ry - rh//2, rw, rh, rr)
+
+def draw_frame(frame):
+    oled.fill(0)
+${microPythonDrawCalls}
+    oled.show()
+
+while True:
+    for i in range(${totalFrames}):
+        draw_frame(i)
+        time.sleep_ms(${delay})`;
+    }
+  };
+};
+
+const fillRoundRectCanvas = (
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number,
+  w: number, h: number,
+  r: number
+) => {
+  if (r < 1) r = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+};
 
 export const animations: OLEDAnimation[] = [
   createBaseAnimation(
@@ -119,69 +232,71 @@ export const animations: OLEDAnimation[] = [
       const r = size * 0.4;
       
       ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+
+      // Face outline
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.stroke();
 
-      // Mask out center for an outlined face
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.beginPath();
-      ctx.arc(cx, cy, r - 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
-
-      // Eyes
+      // Eyes - draw after face
       const blink = frame === 3;
-      const ex = size * 0.15;
-      const ey = size * 0.1;
-      
-      if (!blink) {
-        ctx.beginPath(); ctx.arc(cx - ex, cy - ey, size * 0.05, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(cx + ex, cy - ey, size * 0.05, 0, Math.PI * 2); ctx.fill();
+      if (blink) {
+        ctx.fillRect(cx - size * 0.2, cy - size * 0.12, size * 0.14, 2);
+        ctx.fillRect(cx + size * 0.06, cy - size * 0.12, size * 0.14, 2);
       } else {
-        ctx.fillRect(cx - ex - 4, cy - ey, 8, 2);
-        ctx.fillRect(cx + ex - 4, cy - ey, 8, 2);
+        ctx.fillRect(cx - size * 0.20, cy - size * 0.17, size * 0.09, size * 0.09);
+        ctx.fillRect(cx + size * 0.11, cy - size * 0.17, size * 0.09, size * 0.09);
       }
 
-      // Smile
+      // Smile - manual arc loop for visual parity with OLED
       ctx.beginPath();
-      ctx.arc(cx, cy + size * 0.05, size * 0.2, 0.2 * Math.PI, 0.8 * Math.PI);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#ffffff';
+      // approximate math loop with canvas arc for better performance in preview
+      ctx.arc(cx, cy, size * 0.23, 0.2 * Math.PI, 0.8 * Math.PI);
       ctx.stroke();
     },
     `  int cx = 64;
   int cy = 32;
-  // --- face ---
-  display.drawCircle(cx, cy, 25, WHITE);
-  
-  // --- eyes ---
-  if (frame == 3) {
-    display.drawFastHLine(cx - 13, cy - 6, 8, WHITE);
-    display.drawFastHLine(cx + 5, cy - 6, 8, WHITE);
-  } else {
-    display.fillCircle(cx - 9, cy - 6, 3, WHITE);
-    display.fillCircle(cx + 9, cy - 6, 3, WHITE);
+  // --- face outlines ---
+  display.drawCircle(cx, cy, 26, WHITE);
+
+  // --- eyes --- draw AFTER face, BEFORE smile mask ---
+  if (frame == 3) { // blink
+    display.drawFastHLine(cx - 13, cy - 8, 9, WHITE);
+    display.drawFastHLine(cx + 4, cy - 8, 9, WHITE);
+  } else { // open
+    display.fillRect(cx - 13, cy - 11, 6, 6, WHITE);
+    display.fillRect(cx + 7, cy - 11, 6, 6, WHITE);
   }
 
-  // --- smile ---
-  display.drawCircle(cx, cy + 3, 12, WHITE);
-  display.fillRect(cx - 15, cy - 10, 30, 15, BLACK);`,
-    `    cx, cy = 64, 32
-    # --- face ---
-    oled.ellipse(cx, cy, 25, 25, 1)
+  // --- smile --- bottom arc 200 to 340 degrees ---
+  for (int a = 200; a < 340; a += 8) {
+    float rad = a * 0.0174533;
+    int x = cx + 15 * cos(rad);
+    int y = cy + 15 * sin(rad);
+    display.drawPixel(x, y, WHITE);
+  }`,
+    `    cx, cy = 64, 32  # center of 128x64 display
+    # --- face outline ---
+    oled.ellipse(cx, cy, 26, 26, 1)
 
-    # --- eyes ---
-    if frame == 3:
-        oled.hline(cx - 13, cy - 6, 8, 1)
-        oled.hline(cx + 5, cy - 6, 8, 1)
-    else:
-        oled.fill_rect(cx - 11, cy - 8, 5, 5, 1)
-        oled.fill_rect(cx + 7, cy - 8, 5, 5, 1)
+    # --- eyes --- draw AFTER face, BEFORE smile mask
+    if frame == 3:  # blink frame
+        oled.hline(cx - 13, cy - 8, 9, 1)
+        oled.hline(cx + 4,  cy - 8, 9, 1)
+    else:  # open eyes
+        oled.fill_rect(cx - 13, cy - 11, 6, 6, 1)
+        oled.fill_rect(cx + 7,  cy - 11, 6, 6, 1)
 
-    # --- smile ---
-    oled.ellipse(cx, cy + 3, 12, 12, 1)
-    oled.fill_rect(cx - 15, cy - 10, 30, 15, 0)`
+    # --- smile --- use pixel loop NOT ellipse+mask
+    import math
+    for a in range(200, 340, 8):
+        rad = math.radians(a)
+        x = int(cx + 15 * math.cos(rad))
+        y = int(cy + 15 * math.sin(rad))
+        if 0 <= x <= 127 and 0 <= y <= 63:
+            oled.pixel(x, y, 1)`
   ),
 
   createBaseAnimation(
@@ -198,51 +313,55 @@ export const animations: OLEDAnimation[] = [
       const r = size * 0.4;
       
       ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+
+      // Face outline
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.beginPath();
-      ctx.arc(cx, cy, r - 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
+      ctx.stroke();
 
-      const ey = cy - size * 0.1 + (frame % 2 === 0 ? 0 : 1);
-      ctx.beginPath(); ctx.arc(cx - size*0.15, ey, size * 0.05, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(cx + size*0.15, ey, size * 0.05, 0, Math.PI * 2); ctx.fill();
+      // Eyes
+      ctx.fillRect(cx - size * 0.20, cy - size * 0.17, size * 0.09, size * 0.09);
+      ctx.fillRect(cx + size * 0.11, cy - size * 0.17, size * 0.09, size * 0.09);
 
+      // Frown
       ctx.beginPath();
-      ctx.arc(cx, cy + size * 0.25, size * 0.15, 1.2 * Math.PI, 1.8 * Math.PI);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#ffffff';
+      ctx.arc(cx, cy + size * 0.25, size * 0.12, 1.2 * Math.PI, 1.8 * Math.PI);
       ctx.stroke();
     },
     `  int cx = 64;
   int cy = 32;
-  // --- face ---
-  display.drawCircle(cx, cy, 25, WHITE);
+  // --- face outlines ---
+  display.drawCircle(cx, cy, 26, WHITE);
 
-  // --- eyes ---
-  int8_t eyeYOffset[] = {0, 1, 0, 1};
-  int ey = cy - 6 + eyeYOffset[frame % 4];
-  display.fillCircle(cx - 9, ey, 3, WHITE);
-  display.fillCircle(cx + 9, ey, 3, WHITE);
+  // --- eyes --- small filled squares ---
+  display.fillRect(cx - 13, cy - 11, 6, 6, WHITE);
+  display.fillRect(cx + 7, cy - 11, 6, 6, WHITE);
 
-  // --- sad mouth ---
-  display.drawCircle(cx, cy + 12, 9, WHITE);
-  display.fillRect(cx - 15, cy + 12, 30, 15, BLACK);`,
+  // --- frown --- shifted down ---
+  for (int a = 20; a <= 161; a += 8) {
+    float rad = a * 0.0174533;
+    int x = cx + 13 * cos(rad);
+    int y = cy + 6 + 8 * sin(rad);  // +6 pushes it into lower half
+    display.drawPixel(x, y, WHITE);
+  }`,
     `    cx, cy = 64, 32
-    # --- face ---
-    oled.ellipse(cx, cy, 25, 25, 1)
-    
-    # --- eyes ---
-    ey = cy - 6 + (1 if frame % 2 != 0 else 0)
-    oled.fill_rect(cx - 11, ey - 2, 5, 5, 1)
-    oled.fill_rect(cx + 7, ey - 2, 5, 5, 1)
+    # --- face outline ---
+    oled.ellipse(cx, cy, 26, 26, 1)
 
-    # --- sad mouth ---
-    oled.ellipse(cx, cy + 12, 9, 9, 1)
-    oled.fill_rect(cx - 15, cy + 12, 30, 15, 0)`
+    # --- eyes --- small filled squares
+    oled.fill_rect(cx - 13, cy - 11, 6, 6, 1)
+    oled.fill_rect(cx + 7,  cy - 11, 6, 6, 1)
+
+    # --- frown --- top arc from 20 to 160
+    import math
+    for a in range(20, 161, 8):
+        rad = math.radians(a)
+        x = int(cx + 13 * math.cos(rad))
+        y = int(cy + 6 + 8 * math.sin(rad))  # +6 pushes it into lower half
+        if 0 <= x <= 127 and 0 <= y <= 63:
+            oled.pixel(x, y, 1)`
   ),
 
   createBaseAnimation(
@@ -571,76 +690,83 @@ export const animations: OLEDAnimation[] = [
     4,
     (ctx, frame, size) => {
       const cx = size / 2;
-      const cy = size * 0.6;
+      const cy = size * 0.65;
       ctx.strokeStyle = '#ffffff';
       ctx.fillStyle = '#ffffff';
       ctx.lineWidth = 1;
 
-      // Cup 
+      // Steam wisps
+      const steamYArray = [[-8, -10, -8], [-10, -8, -10], [-8, -10, -10], [-10, -8, -8], [-8, -8, -10], [-10, -10, -8]];
+      const sy = steamYArray[frame % 6];
+      ctx.fillRect(cx - 10, cy - 18 + sy[0], 2, 8);
+      ctx.fillRect(cx,      cy - 18 + sy[1], 2, 8);
+      ctx.fillRect(cx + 10, cy - 18 + sy[2], 2, 8);
+
+      // Cup Body (Trapezoid)
+      const cupTopW = 28;
+      const cupBotW = 20;
+      const cupTopY = cy - 10;
+      const cupBotY = cy + 10;
       ctx.beginPath();
-      ctx.arc(cx, cy, size * 0.2, 0, Math.PI);
-      ctx.lineTo(cx - size * 0.2, cy - size * 0.2);
-      ctx.lineTo(cx + size * 0.2, cy - size * 0.2);
+      ctx.moveTo(cx - cupTopW / 2, cupTopY);
+      ctx.lineTo(cx + cupTopW / 2, cupTopY);
+      ctx.lineTo(cx + cupBotW / 2, cupBotY);
+      ctx.lineTo(cx - cupBotW / 2, cupBotY);
       ctx.closePath();
       ctx.stroke();
 
       // Handle
       ctx.beginPath();
-      ctx.arc(cx + size * 0.2, cy - size * 0.1, size * 0.08, -Math.PI/2, Math.PI/2);
+      ctx.arc(cx + cupTopW / 2 + 5, cy, 6.5, -Math.PI / 2, Math.PI / 2);
       ctx.stroke();
 
-      // Steam
-      const sy = cy - size * 0.25;
-      for (let i = -1; i <= 1; i++) {
-        const offset = (frame + i + 4) % 4;
-        ctx.beginPath();
-        ctx.moveTo(cx + i * size * 0.08, sy - offset * size * 0.05);
-        ctx.quadraticCurveTo(
-          cx + i * size * 0.08 + (offset % 2 === 0 ? 3 : -3), sy - offset * size * 0.05 - 3,
-          cx + i * size * 0.08, sy - offset * size * 0.05 - 6
-        );
-        ctx.stroke();
-      }
+      // Saucer line
+      ctx.beginPath();
+      ctx.moveTo(cx - 22, cupBotY + 3);
+      ctx.lineTo(cx + 22, cupBotY + 3);
+      ctx.stroke();
     },
     `  int cx = 64;
-  int cy = 40;
+  int cy = 42;
+  // --- steam wisps ---
+  int sy[6][3] = {{-8,-10,-8}, {-10,-8,-10}, {-8,-10,-10}, {-10,-8,-8}, {-8,-8,-10}, {-10,-10,-8}};
+  display.drawFastVLine(cx - 10, cy - 18 + sy[frame%6][0], 8, WHITE);
+  display.drawFastVLine(cx,      cy - 18 + sy[frame%6][1], 8, WHITE);
+  display.drawFastVLine(cx + 10, cy - 18 + sy[frame%6][2], 8, WHITE);
 
-  // --- cup ---
-  display.drawFastHLine(cx - 10, cy, 20, WHITE);
-  display.drawFastVLine(cx - 10, cy - 10, 10, WHITE);
-  display.drawFastVLine(cx + 10, cy - 10, 10, WHITE);
-  
+  // --- cup body ---
+  int cup_top_w = 28; int cup_bot_w = 20;
+  int cup_top_y = cy - 10; int cup_bot_y = cy + 10;
+  display.drawFastHLine(cx - 14, cup_top_y, cup_top_w, WHITE);
+  display.drawFastHLine(cx - 10, cup_bot_y, cup_bot_w, WHITE);
+  display.drawLine(cx - 14, cup_top_y, cx - 10, cup_bot_y, WHITE);
+  display.drawLine(cx + 14, cup_top_y, cx + 10, cup_bot_y, WHITE);
+
   // --- handle ---
-  display.drawCircle(cx + 10, cy - 6, 4, WHITE);
-  display.fillRect(cx - 10, cy - 10, 21, 11, BLACK); // mask internal handle loop
+  display.drawCircle(cx + 19, cy, 8, WHITE);
+  display.fillRect(cx + 13, cy - 9, 6, 18, BLACK);
 
-  // --- steam ---
-  int sy = cy - 16;
-  for(int i = -1; i <= 1; i++) {
-     int offset = (frame + i + 4) % 4;
-     int sx = cx + (i * 6);
-     int sym = sy - (offset * 3);
-     display.drawLine(sx, sym, sx + ((offset%2==0) ? 2 : -2), sym - 3, WHITE);
-     display.drawLine(sx + ((offset%2==0) ? 2 : -2), sym - 3, sx, sym - 6, WHITE);
-  }`,
-    `    cx, cy = 64, 40
-    # --- cup ---
-    oled.hline(cx - 10, cy, 20, 1)
-    oled.vline(cx - 10, cy - 10, 10, 1)
-    oled.vline(cx + 10, cy - 10, 10, 1)
-    
+  // --- saucer ---
+  display.drawFastHLine(cx - 22, cup_bot_y + 3, 44, WHITE);`,
+    `    # steam positions
+    steam_y = [[-8, -10, -8], [-10, -8, -10], [-8, -10, -10], [-10, -8, -8], [-8, -8, -10], [-10, -10, -8]]
+    sy = steam_y[frame % 6]
+    cx, cy = 64, 42
+    # --- steam wisps ---
+    oled.vline(cx - 10, cy - 18 + sy[0], 8, 1)
+    oled.vline(cx,      cy - 18 + sy[1], 8, 1)
+    oled.vline(cx + 10, cy - 18 + sy[2], 8, 1)
+    # --- cup body ---
+    cup_top_w, cup_bot_w, cup_top_y, cup_bot_y = 28, 20, cy - 10, cy + 10
+    oled.hline(cx - cup_top_w // 2, cup_top_y, cup_top_w, 1)
+    oled.hline(cx - cup_bot_w // 2, cup_bot_y, cup_bot_w, 1)
+    oled.line(cx - cup_top_w // 2, cup_top_y, cx - cup_bot_w // 2, cup_bot_y, 1)
+    oled.line(cx + cup_top_w // 2, cup_top_y, cx + cup_bot_w // 2, cup_bot_y, 1)
     # --- handle ---
-    oled.ellipse(cx + 10, cy - 6, 4, 4, 1)
-    oled.fill_rect(cx - 10, cy - 10, 21, 11, 0)
-
-    # --- steam ---
-    sy = cy - 16
-    for i in [-1, 0, 1]:
-        offset = (frame + i + 4) % 4
-        sx = cx + (i * 6)
-        sym = sy - (offset * 3)
-        oled.line(sx, sym, sx + (2 if offset%2==0 else -2), sym - 3, 1)
-        oled.line(sx + (2 if offset%2==0 else -2), sym - 3, sx, sym - 6, 1)`
+    oled.ellipse(cx + cup_top_w // 2 + 5, cy, 5, 8, 1)
+    oled.fill_rect(cx + cup_top_w // 2 + 5 - 6, cy - 9, 6, 18, 0)
+    # --- saucer ---
+    oled.hline(cx - 22, cup_bot_y + 3, 44, 1)`
   ),
 
   createBaseAnimation(
@@ -1003,69 +1129,388 @@ export const animations: OLEDAnimation[] = [
     10,
     6,
     (ctx, frame, size) => {
-      const cx = size * 0.2;
-      const cy = size * 0.2;
-
+      const waveArray = [0, 1, 2, 3, 2, 1];
+      const w = waveArray[frame % 6];
       ctx.fillStyle = '#ffffff';
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1;
 
       // Pole
-      ctx.fillRect(cx, cy, 2, size * 0.6);
-
-      // Flag
-      for(let r = 0; r < 3; r++) {
-         ctx.beginPath();
-         for(let x = 0; x <= size * 0.5; x+=2) {
-           const yOffset = Math.sin((x * 0.1) + frame) * 3;
-           if (x === 0) ctx.moveTo(cx + x + 2, cy + (r * 8) + yOffset);
-           else ctx.lineTo(cx + x + 2, cy + (r * 8) + yOffset);
-         }
-         ctx.stroke();
-      }
+      ctx.fillRect(20, 4, 2, 56);
       
+      // Flag Body
+      const flagX = 21;
+      const flagW = 60 + w;
+      const flagYTop = 8;
+      
+      ctx.fillRect(flagX, flagYTop, flagW, 10);
+      ctx.strokeRect(flagX, flagYTop + 10, flagW, 10);
+      ctx.fillRect(flagX, flagYTop + 20, flagW, 10);
+
       // Chakra dot
-      const yOffset = Math.sin((size * 0.25 * 0.1) + frame) * 3;
       ctx.beginPath();
-      ctx.arc(cx + size * 0.25, cy + 8 + yOffset, 2, 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.arc(flagX + flagW / 2, flagYTop + 15, 3, 0, Math.PI * 2);
+      ctx.fill();
     },
-    `  int cx = 30;
-  int cy = 20;
-
-  // --- pole ---
-  display.fillRect(cx, cy, 2, 38, WHITE);
-
-  // --- flag bands ---
-  for (int r = 0; r < 3; r++) {
-    for (int x = 0; x <= 32; x += 2) {
-      int yOffset = (int)(sin((x * 0.1) + frame) * 3);
-      if (r != 1) { // 0=saffron, 2=green (skip 1 for bw visibility)
-         display.drawLine(cx + x, cy + (r * 6) + yOffset, cx + x + 2, cy + (r * 6) + (int)(sin(((x+2) * 0.1) + frame) * 3), WHITE);
+    `  int wave[] = {0, 1, 2, 3, 2, 1};
+  int w = wave[frame % 6];
+  int pole_x = 20;
+  display.drawFastVLine(pole_x, 4, 56, WHITE);
+  int flag_x = 21;
+  int flag_w = 60 + w;
+  int flag_y_top = 8;
+  display.fillRect(flag_x, flag_y_top, flag_w, 10, WHITE);
+  display.fillRect(flag_x, flag_y_top + 10, flag_w, 10, BLACK);
+  display.drawFastHLine(flag_x, flag_y_top + 10, flag_w, WHITE);
+  display.drawFastHLine(flag_x, flag_y_top + 19, flag_w, WHITE);
+  display.fillRect(flag_x, flag_y_top + 20, flag_w, 10, WHITE);
+  display.drawCircle(flag_x + flag_w / 2, flag_y_top + 15, 4, WHITE);`,
+    `    wave = [0, 1, 2, 3, 2, 1]
+    w = wave[frame % 6]
+    pole_x = 20
+    oled.vline(pole_x, 4, 56, 1)
+    flag_x = 21
+    flag_w = 60 + w
+    flag_y_top = 8
+    # band 1 - top
+    oled.fill_rect(flag_x, flag_y_top,      flag_w, 10, 1)
+    # band 2 - middle
+    oled.fill_rect(flag_x, flag_y_top + 10, flag_w, 10, 0)
+    oled.hline(flag_x, flag_y_top + 10, flag_w, 1)
+    oled.hline(flag_x, flag_y_top + 19, flag_w, 1)
+    # band 3 - bottom
+    oled.fill_rect(flag_x, flag_y_top + 20, flag_w, 10, 1)
+    # chakra
+    oled.ellipse(flag_x + flag_w // 2, flag_y_top + 15, 4, 4, 1)`
+  ),
+  createRobotEyeAnimation(
+    'eyes_default',
+    'eyes_default',
+    ['robot', 'eyes', 'blink', 'idle'],
+    10,
+    4,
+    (ctx, frame, size) => {
+      const h = [28, 28, 2, 28][frame % 4];
+      const r = frame === 2 ? 1 : 8;
+      fillRoundRectCanvas(ctx, 32 - 19, 32 - h/2, 38, h, r);
+      fillRoundRectCanvas(ctx, 96 - 19, 32 - h/2, 38, h, r);
+    },
+    `    int h[] = {28, 28, 2, 28};
+    int r = (frame == 2) ? 1 : 8;
+    drawEyes(32, 32, 38, h[frame], r, 96, 32, 38, h[frame], r);`,
+    `    h = [28, 28, 2, 28][frame % 4]
+    r = 1 if frame == 2 else 8
+    draw_eyes(32, 32, 38, h, r, 96, 32, 38, h, r)`
+  ),
+  createRobotEyeAnimation(
+    'eyes_happy',
+    'eyes_happy',
+    ['robot', 'eyes', 'happy', 'squish'],
+    10,
+    4,
+    (ctx, frame, size) => {
+      const h = [28, 24, 18, 24][frame % 4];
+      const y = [32, 34, 37, 34][frame % 4];
+      const r = 8;
+      const drawHappyEye = (cx: number) => {
+        fillRoundRectCanvas(ctx, cx - 19, y - h/2, 38, h, r);
+        const topFlatten = 28 - h;
+        if (topFlatten > 0) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.fillRect(cx - 19, y - h/2, 38, topFlatten/2);
+          ctx.restore();
+        }
+      };
+      drawHappyEye(32);
+      drawHappyEye(96);
+    },
+    `    int h[] = {28, 24, 18, 24};
+    int y[] = {32, 34, 37, 34};
+    drawEyes(32, y[frame], 38, h[frame], 8, 96, y[frame], 38, h[frame], 8);
+    if (h[frame] < 28) {
+      int flatten = (28 - h[frame]) / 2;
+      display.fillRect(32-19, y[frame]-h[frame]/2, 38, flatten, BLACK);
+      display.fillRect(96-19, y[frame]-h[frame]/2, 38, flatten, BLACK);
+    }`,
+    `    h = [28, 24, 18, 24][frame % 4]
+    y = [32, 34, 37, 34][frame % 4]
+    draw_eyes(32, y, 38, h, 8, 96, y, 38, h, 8)
+    if h < 28:
+       flatten = (28 - h) // 2
+       oled.fill_rect(32-19, y-h//2, 38, flatten, 0)
+       oled.fill_rect(96-19, y-h//2, 38, flatten, 0)`
+  ),
+  createRobotEyeAnimation(
+    'eyes_angry',
+    'eyes_angry',
+    ['robot', 'eyes', 'angry', 'mean'],
+    10,
+    4,
+    (ctx, frame, size) => {
+      const th = [0, 6, 12, 6][frame % 4];
+      const drawAngryEye = (cx: number, isRight: boolean) => {
+        fillRoundRectCanvas(ctx, cx - 19, 32 - 14, 38, 28, 8);
+        if (th > 0) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'destination-out';
+          if (!isRight) { // left eye inner top corner (right side)
+            ctx.fillRect(cx, 32 - 14, 19, th);
+          } else { // right eye inner top corner (left side)
+            ctx.fillRect(cx - 19, 32 - 14, 19, th);
+          }
+          ctx.restore();
+        }
+      };
+      drawAngryEye(32, false);
+      drawAngryEye(96, true);
+    },
+    `    int th[] = {0, 6, 12, 6};
+    drawEyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8);
+    if (th[frame] > 0) {
+      display.fillRect(32, 32-14, 19, th[frame], BLACK);
+      display.fillRect(96-19, 32-14, 19, th[frame], BLACK);
+    }`,
+    `    th = [0, 6, 12, 6][frame % 4]
+    draw_eyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8)
+    if th > 0:
+        oled.fill_rect(32, 32-14, 19, th, 0)
+        oled.fill_rect(96-19, 32-14, 19, th, 0)`
+  ),
+  createRobotEyeAnimation(
+    'eyes_sleepy',
+    'eyes_sleepy',
+    ['robot', 'eyes', 'sleepy', 'tired'],
+    8,
+    6,
+    (ctx, frame, size) => {
+      const h = [28, 22, 14, 8, 14, 22][frame % 6];
+      const drawSleepyEye = (cx: number) => {
+        fillRoundRectCanvas(ctx, cx - 19, 32 - 14 + (28-h), 38, h, 4);
+        // eyelid
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillRect(cx - 19, 32 - 14, 38, 10);
+        ctx.restore();
+      };
+      drawSleepyEye(32);
+      drawSleepyEye(96);
+    },
+    `    int heights[] = {28, 22, 14, 8, 14, 22};
+    int h = heights[frame % 6];
+    drawEyes(32, 32 + (28-h)/2, 38, h, 4, 96, 32 + (28-h)/2, 38, h, 4);
+    display.fillRect(32-19, 32-14, 38, 10, BLACK);
+    display.fillRect(96-19, 32-14, 38, 10, BLACK);`,
+    `    heights = [28, 22, 14, 8, 14, 22]
+    h = heights[frame % 6]
+    draw_eyes(32, 32 + (28-h)//2, 38, h, 4, 96, 32 + (28-h)//2, 38, h, 4)
+    oled.fill_rect(32-19, 32-14, 38, 10, 0)
+    oled.fill_rect(96-19, 32-14, 38, 10, 0)`
+  ),
+  createRobotEyeAnimation(
+    'eyes_suspicious',
+    'eyes_suspicious',
+    ['robot', 'eyes', 'suspicious', 'squint'],
+    10,
+    4,
+    (ctx, frame, size) => {
+      const hLeft = [28, 20, 12, 20][frame % 4];
+      fillRoundRectCanvas(ctx, 32 - 19, 32 - hLeft/2, 38, hLeft, 8);
+      fillRoundRectCanvas(ctx, 96 - 19, 32 - 14, 38, 28, 8);
+    },
+    `    int hLeft[] = {28, 20, 12, 20};
+    drawEyes(32, 32, 38, hLeft[frame], 8, 96, 32, 38, 28, 8);`,
+    `    h_left = [28, 20, 12, 20][frame % 4]
+    draw_eyes(32, 32, 38, h_left, 8, 96, 32, 38, 28, 8)`
+  ),
+  createRobotEyeAnimation(
+    'eyes_wide',
+    'eyes_wide',
+    ['robot', 'eyes', 'wide', 'surprise'],
+    10,
+    4,
+    (ctx, frame, size) => {
+      const dw = [0, 4, 8, 4][frame % 4];
+      const dh = [0, 4, 8, 4][frame % 4];
+      const r = 8 + dw/2;
+      fillRoundRectCanvas(ctx, 32 - (38+dw)/2, 32 - (28+dh)/2, 38+dw, 28+dh, r);
+      fillRoundRectCanvas(ctx, 96 - (38+dw)/2, 32 - (28+dh)/2, 38+dw, 28+dh, r);
+    },
+    `    int d[] = {0, 4, 8, 4};
+    int w = 38 + d[frame];
+    int h = 28 + d[frame];
+    int r = 8 + d[frame]/2;
+    drawEyes(32, 32, w, h, r, 96, 32, w, h, r);`,
+    `    d = [0, 4, 8, 4][frame % 4]
+    w, h, r = 38 + d, 28 + d, 8 + d//2
+    draw_eyes(32, 32, w, h, r, 96, 32, w, h, r)`
+  ),
+  createRobotEyeAnimation(
+    'eyes_look_right',
+    'eyes_look_right',
+    ['robot', 'eyes', 'look', 'right'],
+    8,
+    6,
+    (ctx, frame, size) => {
+      const ox = [0, 4, 8, 10, 8, 4][frame % 6];
+      const drawEyeWithPupil = (cx: number) => {
+        fillRoundRectCanvas(ctx, cx - 19, 32 - 14, 38, 28, 8);
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.arc(cx + ox, 32, 8, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      drawEyeWithPupil(32);
+      drawEyeWithPupil(96);
+    },
+    `    int ox[] = {0, 4, 8, 10, 8, 4};
+    drawEyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8);
+    display.fillCircle(32 + ox[frame], 32, 8, BLACK);
+    display.fillCircle(96 + ox[frame], 32, 8, BLACK);`,
+    `    ox = [0, 4, 8, 10, 8, 4][frame % 6]
+    draw_eyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8)
+    oled.ellipse(32 + ox, 32, 8, 8, 0)
+    oled.ellipse(96 + ox, 32, 8, 8, 0)
+    oled.show()`
+  ),
+  createRobotEyeAnimation(
+    'eyes_look_left',
+    'eyes_look_left',
+    ['robot', 'eyes', 'look', 'left'],
+    8,
+    6,
+    (ctx, frame, size) => {
+      const ox = [0, -4, -8, -10, -8, -4][frame % 6];
+      const drawEyeWithPupil = (cx: number) => {
+        fillRoundRectCanvas(ctx, cx - 19, 32 - 14, 38, 28, 8);
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(cx + ox, 32, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      };
+      drawEyeWithPupil(32);
+      drawEyeWithPupil(96);
+    },
+    `    int ox[] = {0, -4, -8, -10, -8, -4};
+    drawEyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8);
+    display.fillCircle(32 + ox[frame], 32, 8, BLACK);
+    display.fillCircle(96 + ox[frame], 32, 8, BLACK);`,
+    `    ox = [0, -4, -8, -10, -8, -4][frame % 6]
+    draw_eyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8)
+    oled.ellipse(32 + ox, 32, 8, 8, 0)
+    oled.ellipse(96 + ox, 32, 8, 8, 0)
+    oled.show()`
+  ),
+  createRobotEyeAnimation(
+    'eyes_doughnut',
+    'eyes_doughnut',
+    ['robot', 'eyes', 'ring', 'spidermaf'],
+    8,
+    4,
+    (ctx, frame, size) => {
+      const drawRingEye = (cx: number) => {
+        fillRoundRectCanvas(ctx, cx - 19, 32 - 14, 38, 28, 8);
+        ctx.globalCompositeOperation = 'destination-out';
+        fillRoundRectCanvas(ctx, cx - 9, 32 - 5, 18, 10, 4);
+        ctx.globalCompositeOperation = 'source-over';
+      };
+      drawRingEye(32);
+      drawRingEye(96);
+    },
+    `    drawEyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8);
+    // Cutout inner part
+    display.fillRoundRect(32 - 9, 32 - 5, 18, 10, 4, BLACK);
+    display.fillRoundRect(96 - 9, 32 - 5, 18, 10, 4, BLACK);`,
+    `    draw_eyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8)
+    fill_round_rect(32 - 9, 32 - 5, 18, 10, 4, 0)
+    fill_round_rect(96 - 9, 32 - 5, 18, 10, 4, 0)`
+  ),
+  createRobotEyeAnimation(
+    'eyes_pill_tall',
+    'eyes_pill_tall',
+    ['robot', 'eyes', 'tall', 'vinny'],
+    8,
+    4,
+    (ctx, frame, size) => {
+      const h = [42, 40, 38, 40][frame % 4];
+      fillRoundRectCanvas(ctx, 32 - 12, 32 - h/2, 24, h, 12);
+      fillRoundRectCanvas(ctx, 96 - 12, 32 - h/2, 24, h, 12);
+    },
+    `    int h[] = {42, 40, 38, 40};
+    drawEyes(32, 32, 24, h[frame], 12, 96, 32, 24, h[frame], 12);`,
+    `    h = [42, 40, 38, 40][frame % 4]
+    draw_eyes(32, 32, 24, h, 12, 96, 32, 24, h, 12)`
+  ),
+  createRobotEyeAnimation(
+    'eyes_pill_wide',
+    'eyes_pill_wide',
+    ['robot', 'eyes', 'wide', 'abdulsalam'],
+    8,
+    4,
+    (ctx, frame, size) => {
+      const w = [50, 48, 46, 48][frame % 4];
+      fillRoundRectCanvas(ctx, 32 - w/2, 32 - 12, w, 24, 8);
+      fillRoundRectCanvas(ctx, 96 - w/2, 32 - 12, w, 24, 8);
+    },
+    `    int w[] = {50, 48, 46, 48};
+    drawEyes(32, 32, w[frame], 24, 8, 96, 32, w[frame], 24, 8);`,
+    `    w = [50, 48, 46, 48][frame % 4]
+    draw_eyes(32, 32, w, 24, 8, 96, 32, w, 24, 8)`
+  ),
+  createRobotEyeAnimation(
+    'eyes_mini',
+    'eyes_mini',
+    ['robot', 'eyes', 'small', 'picajo'],
+    6,
+    4,
+    (ctx, frame, size) => {
+      const s = [0, 1, 2, 1][frame % 4];
+      fillRoundRectCanvas(ctx, 32 - 14, 32 - 11 + s, 28, 22 - s*2, 6);
+      fillRoundRectCanvas(ctx, 96 - 14, 32 - 11 + s, 28, 22 - s*2, 6);
+    },
+    `    int s[] = {0, 1, 2, 1};
+    drawEyes(32, 32, 28, 22 - s[frame]*2, 6, 96, 32, 28, 22 - s[frame]*2, 6);`,
+    `    s = [0, 1, 2, 1][frame % 4]
+    draw_eyes(32, 32, 28, 22 - s*2, 6, 96, 32, 28, 22 - s*2, 6)`
+  ),
+  createRobotEyeAnimation(
+    'eyes_glitch',
+    'eyes_glitch',
+    ['robot', 'eyes', 'glitch', 'error'],
+    12,
+    6,
+    (ctx, frame, size) => {
+      const ox = [0, 2, -2, 4, -1, 0][frame % 6];
+      const oy = [0, -2, 3, -1, 2, 0][frame % 6];
+      if (frame % 3 === 0) {
+        fillRoundRectCanvas(ctx, 32 - 19 + ox, 32 - 14 + oy, 38, 28, 8);
+        fillRoundRectCanvas(ctx, 96 - 19 - ox, 32 - 14 - oy, 38, 28, 8);
+      } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(32 - 19, 32 - 2, 38, 4);
+        ctx.fillRect(96 - 19, 32 - 2, 38, 4);
       }
-    }
-  }
-  
-  // --- chakra ---
-  int yOffset = (int)(sin((16 * 0.1) + frame) * 3);
-  int chakraX = cx + 16;
-  int chakraY = cy + 6 + yOffset;
-  display.drawCircle(chakraX, chakraY, 2, WHITE);`,
-    `    import math
-    cx, cy = 30, 20
-
-    # --- pole ---
-    oled.fill_rect(cx, cy, 2, 38, 1)
-
-    # --- flag bands ---
-    for r in [0, 2]: # skip white middle band
-        for x in range(0, 32, 2):
-            y_offset = int(math.sin((x * 0.1) + frame) * 3)
-            y_next = int(math.sin(((x + 2) * 0.1) + frame) * 3)
-            oled.line(cx + x, cy + (r * 6) + y_offset, cx + x + 2, cy + (r * 6) + y_next, 1)
-
-    # --- chakra ---
-    y_offset = int(math.sin((16 * 0.1) + frame) * 3)
-    oled.ellipse(cx + 16, cy + 6 + y_offset, 2, 2, 1)`
+    },
+    `    int ox[] = {0, 2, -2, 4, -1, 0};
+    int oy[] = {0, -2, 3, -1, 2, 0};
+    if (frame % 3 == 0) {
+      drawEyes(32 + ox[frame], 32 + oy[frame], 38, 28, 8, 96 - ox[frame], 32 - oy[frame], 38, 28, 8);
+    } else {
+      display.clearDisplay();
+      display.fillRect(32 - 19, 32 - 2, 38, 4, WHITE);
+      display.fillRect(96 - 19, 32 - 2, 38, 4, WHITE);
+      display.display();
+    }`,
+    `    ox = [0, 2, -2, 4, -1, 0]
+    oy = [0, -2, 3, -1, 2, 0]
+    if frame % 3 == 0:
+        draw_eyes(32 + ox[frame % 6], 32 + oy[frame % 6], 38, 28, 8, 96 - ox[frame % 6], 32 - oy[frame % 6], 38, 28, 8)
+    else:
+        oled.fill(0)
+        oled.fill_rect(32-19, 32-2, 38, 4, 1)
+        oled.fill_rect(96-19, 32-2, 38, 4, 1)
+        oled.show()`
   )
 ];

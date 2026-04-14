@@ -10,12 +10,14 @@ interface SerialContextValue {
   connectionState: ConnectionState;
   portInfo: { usbVendorId?: number; usbProductId?: number } | null;
   logs: string[];
+  isAnimationRunning: boolean;
   hasMicroPython: boolean;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
-  sendData: (data: string) => Promise<void>;
-  executeRawRepl: (code: string, waitResponse?: boolean) => Promise<string>;
+  runAnimationOnDevice: (code: string) => Promise<void>;
+  stopAnimation: () => Promise<void>;
   clearLogs: () => void;
+  addLog: (log: string) => void;
 }
 
 const SerialContext = createContext<SerialContextValue | null>(null);
@@ -26,15 +28,18 @@ export const SerialProvider = ({ children }: { children: ReactNode }) => {
   const [isSupported, setIsSupported] = useState(true);
   const [connectionState, setConnectionState] = useState<ConnectionState>('DISCONNECTED');
   const [portInfo, setPortInfo] = useState<{ usbVendorId?: number; usbProductId?: number } | null>(null);
-  const [hasMicroPython, setHasMicroPython] = useState(false);
+  const [hasMicroPython, setHasMicroPython] = useState(true); // Default to true now
   const [logs, setLogs] = useState<string[]>([
     "// 0x1306.dev · interactive terminal",
     "// waiting for device connection_"
   ]);
+  const [isAnimationRunning, setIsAnimationRunning] = useState(false);
   
   const portRef = useRef<any>(null);
-  const readerRef = useRef<any>(null);
-  const readBufferRef = useRef<string>("");
+  
+  const isRunningRef = useRef(false);
+  const readerRef = useRef<ReadableStreamDefaultReader | null>(null);
+  const writerRef = useRef<WritableStreamDefaultWriter | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -45,52 +50,223 @@ export const SerialProvider = ({ children }: { children: ReactNode }) => {
   const addLog = (log: string) => setLogs(prev => [...prev, log].slice(-100));
   const clearLogs = () => setLogs([]);
 
-  const sendData = async (data: string) => {
-    if (!portRef.current || !portRef.current.writable) return;
-    const encoder = new TextEncoder();
-    const writer = portRef.current.writable.getWriter();
-    try {
-      await writer.write(encoder.encode(data));
-    } catch(e: any) {
-       addLog(`// ERR writing: ${e.message}`);
-    } finally {
-      writer.releaseLock();
-    }
-  };
+  const executeSequence = async (
+    writer: WritableStreamDefaultWriter<any>,
+    reader: ReadableStreamDefaultReader<any>,
+    code: string
+  ) => {
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+    let pendingRead: Promise<ReadableStreamReadResult<any>> | null = null;
 
-  const executeRawRepl = async (code: string, waitResponse = true): Promise<string> => {
-    if (!portRef.current) throw new Error("Port closed");
-    
-    // Interrupt
-    await sendData("\x03");
-    await delay(200);
+    const readUntil = async (timeoutMs: number): Promise<string> => {
+      let result = '';
+      const deadline = Date.now() + timeoutMs;
+      
+      while (Date.now() < deadline) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
 
-    // Enter raw REPL
-    await sendData("\x01");
-    await delay(100);
+        try {
+          if (!pendingRead) {
+            pendingRead = reader.read();
+          }
 
-    // Write chunks
-    const chunkSize = 256;
-    for (let i = 0; i < code.length; i += chunkSize) {
-      await sendData(code.substring(i, i + chunkSize));
-      await delay(20);
-    }
+          const timeoutPromise = new Promise<null>(
+            r => setTimeout(() => r(null), Math.min(remaining, 200))
+          );
 
-    readBufferRef.current = "";
+          const winner = await Promise.race([pendingRead, timeoutPromise]);
 
-    // Execute
-    await sendData("\x04");
+          if (winner === null) {
+            // timeout fired — no data yet, keep looping until deadline
+            continue;
+          }
 
-    if (waitResponse) {
-      for (let i = 0; i < 20; i++) {
-        await delay(100);
-        if (readBufferRef.current.includes("OK") || readBufferRef.current.includes("Traceback") || readBufferRef.current.includes("\x04")) {
+          // got data
+          pendingRead = null;
+          const { value, done } = winner as ReadableStreamReadResult<Uint8Array>;
+          if (done) break;
+          if (value) result += dec.decode(value, { stream: true });
+
+          // early exit if we already have what we need
+          if (result.includes('raw REPL') || result.includes('CTRL-B') || result.includes('raw_repl') || result.includes('>')) {
+             break;
+          }
+
+        } catch (e) {
+          addLog("// ERR read: " + (e as Error).message);
+          pendingRead = null;
           break;
         }
       }
-    }
+
+      return result;
+    };
+
+    addLog('// [1/4] interrupting...');
+    await writer.write(new Uint8Array([0x03]));  // Ctrl+C first
+    await delay(300);
+    await writer.write(new Uint8Array([0x03]));  // Ctrl+C second
+    await delay(1000);
+    const step1Response = await readUntil(600);  // flush
     
-    return readBufferRef.current;
+    addLog('// DBG step1 flush: [' + step1Response.substring(0,80) + ']');
+
+    addLog('// [2/4] entering raw REPL...');
+    await writer.write(new Uint8Array([0x01]));  // Ctrl+A
+    await delay(800);           // was 600 — wait for raw REPL banner
+    const replCheck = await readUntil(2000);    // was 800 — give 2 full seconds to receive banner
+
+    addLog('// DBG step2 repl: [' + replCheck.substring(0,80) + ']');
+
+    const isRawRepl =
+      replCheck.includes('raw REPL') ||
+      replCheck.includes('CTRL-B') ||
+      replCheck.includes('raw_repl') ||
+      replCheck.includes('>');   // fallback — any prompt means REPL is ready
+
+    if (!isRawRepl) {
+      addLog('// ERR: raw REPL not detected · received: ' + replCheck.substring(0, 50));
+      return;
+    }
+    addLog('// raw REPL confirmed ✓');
+
+    addLog(`// [3/4] sending code... (${code.length} bytes)`);
+    const CHUNK_SIZE = 256;
+    for (let i = 0; i < code.length; i += CHUNK_SIZE) {
+      const chunk = code.slice(i, i + CHUNK_SIZE);
+      await writer.write(enc.encode(chunk));
+      await delay(100);
+    }
+
+    addLog('// [4/4] executing...');
+    await writer.write(new Uint8Array([0x04]));
+    await delay(3000);
+    const output = await readUntil(2000);
+
+    if (output.includes('Traceback') || output.includes('Error')) {
+      addLog('// ERR: ' + output.trim());
+      return;
+    }
+
+    addLog('// animation running ✓ · click stop to clear');
+    setIsAnimationRunning(true);
+  };
+
+  const runAnimationOnDevice = async (animationCode: string) => {
+    if (isRunningRef.current) {
+      console.log('already running, ignoring click');
+      return;
+    }
+    isRunningRef.current = true;
+
+    if (!portRef.current) {
+      isRunningRef.current = false;
+      return;
+    }
+
+    if (readerRef.current) {
+      try { await readerRef.current.cancel(); } catch {}
+      try { readerRef.current.releaseLock(); } catch {}
+      readerRef.current = null;
+    }
+    if (writerRef.current) {
+      try { writerRef.current.releaseLock(); } catch {}
+      writerRef.current = null;
+    }
+
+    const port = portRef.current;
+    if (port.readable?.locked) {
+       addLog("// ERR: Port is currently locked (Reader). Please reconnect.");
+       isRunningRef.current = false;
+       return;
+    }
+    if (port.writable?.locked) {
+       addLog("// ERR: Port is currently locked (Writer). Please reconnect.");
+       isRunningRef.current = false;
+       return;
+    }
+
+    const writer = port.writable.getWriter();
+    const reader = port.readable.getReader();
+    writerRef.current = writer;
+    readerRef.current = reader;
+
+    try {
+      await executeSequence(writer, reader, animationCode);
+    } finally {
+      try { await reader.cancel(); } catch {}
+      try { reader.releaseLock(); } catch {}
+      try { writer.releaseLock(); } catch {}
+      readerRef.current = null;
+      writerRef.current = null;
+      isRunningRef.current = false;
+    }
+  };
+
+  const stopAnimation = async () => {
+    if (!portRef.current) return;
+    
+    if (readerRef.current) {
+      try { await readerRef.current.cancel(); } catch {}
+      try { readerRef.current.releaseLock(); } catch {}
+      readerRef.current = null;
+    }
+    if (writerRef.current) {
+      try { writerRef.current.releaseLock(); } catch {}
+      writerRef.current = null;
+    }
+
+    const port = portRef.current;
+    if (port.readable?.locked || port.writable?.locked) {
+       addLog("// ERR: Port locked. Cannot stop animation.");
+       return;
+    }
+
+    const writer = port.writable.getWriter();
+    const reader = port.readable.getReader();
+    writerRef.current = writer;
+    readerRef.current = reader;
+
+    try {
+      await writer.write(new Uint8Array([0x03]));
+      await delay(500);
+      await writer.write(new Uint8Array([0x01]));
+      await delay(500);
+      
+      try {
+        await Promise.race([
+          reader.read(),
+          new Promise<any>(r => setTimeout(() => r({done: true}), 100))
+        ]);
+      } catch {}
+
+      const clearCode =
+        'from machine import I2C, Pin\nimport ssd1306\n' +
+        'i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000)\n' +
+        'oled = ssd1306.SSD1306_I2C(128, 64, i2c)\n' +
+        'oled.fill(0)\noled.show()\n';
+
+      const enc = new TextEncoder();
+      const CHUNK_SIZE = 256;
+      for (let i = 0; i < clearCode.length; i += CHUNK_SIZE) {
+        await writer.write(enc.encode(clearCode.slice(i, i + CHUNK_SIZE)));
+        await delay(50);
+      }
+      await delay(200);
+      await writer.write(new Uint8Array([0x04]));
+      await delay(1000);
+
+      addLog('// display cleared ✓');
+      setIsAnimationRunning(false);
+    } finally {
+      try { await reader.cancel(); } catch {}
+      try { reader.releaseLock(); } catch {}
+      try { writer.releaseLock(); } catch {}
+      readerRef.current = null;
+      writerRef.current = null;
+    }
   };
 
   const connect = async () => {
@@ -105,25 +281,7 @@ export const SerialProvider = ({ children }: { children: ReactNode }) => {
       setPortInfo(port.getInfo());
       setConnectionState('CONNECTED');
       addLog('// system: device connected at 115200 baud');
-
-      readLoop(port);
-
-      // Startup micro python check
-      try {
-        await sendData("\x03"); // Interrupt
-        await delay(200);
-        const res = await executeRawRepl("import sys; print(sys.implementation.name)");
-        if (res.includes("micropython")) {
-          setHasMicroPython(true);
-        } else {
-          setHasMicroPython(false);
-          addLog("// warning: micropython not detected on boot");
-        }
-        await sendData("\x02"); // Exit raw repl
-      } catch (e) {
-        setHasMicroPython(false);
-      }
-
+      setHasMicroPython(true); 
     } catch (err: any) {
       setConnectionState('ERROR');
       addLog(`// ERR: ${err.message || 'connection failed'}`);
@@ -143,45 +301,11 @@ export const SerialProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       portRef.current = null;
       readerRef.current = null;
+      writerRef.current = null;
       setConnectionState('DISCONNECTED');
       setPortInfo(null);
-      setHasMicroPython(false);
+      setIsAnimationRunning(false);
       addLog('// system: disconnected');
-    }
-  };
-
-  const readLoop = async (port: any) => {
-    while (port.readable && portRef.current === port) {
-      const textDecoder = new TextDecoderStream();
-      const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-      const reader = textDecoder.readable.getReader();
-      readerRef.current = reader;
-
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (value) {
-            readBufferRef.current += value;
-            let newlineIdx;
-            while ((newlineIdx = readBufferRef.current.indexOf('\n')) >= 0) {
-              const line = readBufferRef.current.slice(0, newlineIdx).trim();
-              if (line) addLog(line);
-              readBufferRef.current = readBufferRef.current.slice(newlineIdx + 1);
-            }
-          }
-        }
-      } catch (error) {
-        if (portRef.current) {
-          setConnectionState('ERROR');
-          addLog('// ERR: device disconnected unexpectedly');
-        }
-      } finally {
-        readerRef.current = null;
-        try {
-          reader.releaseLock();
-        } catch (e) {}
-      }
     }
   };
 
@@ -191,12 +315,14 @@ export const SerialProvider = ({ children }: { children: ReactNode }) => {
       connectionState,
       portInfo,
       logs,
+      isAnimationRunning,
       hasMicroPython,
       connect,
       disconnect,
-      sendData,
-      executeRawRepl,
-      clearLogs
+      runAnimationOnDevice,
+      stopAnimation,
+      clearLogs,
+      addLog
     }}>
       {children}
     </SerialContext.Provider>
