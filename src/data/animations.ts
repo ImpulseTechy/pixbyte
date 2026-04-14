@@ -1,14 +1,25 @@
 export interface OLEDAnimation {
   id: string;
   name: string;
-  category: 'emoji' | 'robot_eyes' | 'icons' | 'loaders' | 'indian' | 'festival' | 'text_fx';
+  category:
+    | "emoji"
+    | "robot_eyes"
+    | "icons"
+    | "loaders"
+    | "indian"
+    | "festival"
+    | "text_fx";
   tags: string[];
   supportedSizes: (32 | 48 | 64)[];
   fps: number;
   totalFrames: number;
   byteCount: number;
   frames: { [size: number]: Uint8Array[] };
-  drawFrame: (ctx: CanvasRenderingContext2D, frameIndex: number, size: number) => void;
+  drawFrame: (
+    ctx: CanvasRenderingContext2D,
+    frameIndex: number,
+    size: number,
+  ) => void;
   getArduinoCode: (size: number) => string;
   getMicroPythonCode: (size: number) => string;
 }
@@ -19,14 +30,18 @@ const getByteCount = (size: number) => (size * size) / 8;
 const createBaseAnimation = (
   id: string,
   name: string,
-  category: OLEDAnimation['category'],
+  category: OLEDAnimation["category"],
   tags: string[],
   supportedSizes: (32 | 48 | 64)[],
   fps: number,
   totalFrames: number,
-  drawFrame: (ctx: CanvasRenderingContext2D, frameIndex: number, size: number) => void,
+  drawFrame: (
+    ctx: CanvasRenderingContext2D,
+    frameIndex: number,
+    size: number,
+  ) => void,
   arduinoDrawCalls: string,
-  microPythonDrawCalls: string
+  microPythonDrawCalls: string,
 ): OLEDAnimation => {
   const maxBytes = Math.max(...supportedSizes.map(getByteCount));
 
@@ -38,10 +53,10 @@ const createBaseAnimation = (
     supportedSizes,
     fps,
     totalFrames,
-    byteCount: maxBytes, 
+    byteCount: maxBytes,
     frames: {},
     drawFrame,
-    getArduinoCode: (size: number) => {
+    getArduinoCode: () => {
       const delay = Math.round(1000 / fps);
       return `#include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -80,7 +95,7 @@ void loop() {
   }
 }`;
     },
-    getMicroPythonCode: (size: number) => {
+    getMicroPythonCode: () => {
       const delay = Math.round(1000 / fps);
       return `# 0x1306.dev · animation: ${name} · ${totalFrames} frames · ${delay}ms
 import machine
@@ -100,7 +115,7 @@ while True:
         draw_frame(i)
         time.sleep_ms(${delay})
 `;
-    }
+    },
   };
 };
 const createRobotEyeAnimation = (
@@ -109,14 +124,18 @@ const createRobotEyeAnimation = (
   tags: string[],
   fps: number,
   totalFrames: number,
-  drawFrame: (ctx: CanvasRenderingContext2D, frameIndex: number, size: number) => void,
+  drawFrame: (
+    ctx: CanvasRenderingContext2D,
+    frameIndex: number,
+    size: number,
+  ) => void,
   arduinoDrawCalls: string,
-  microPythonDrawCalls: string
+  microPythonDrawCalls: string,
 ): OLEDAnimation => {
   return {
     id,
     name,
-    category: 'robot_eyes',
+    category: "robot_eyes",
     tags,
     supportedSizes: [64],
     fps,
@@ -124,7 +143,7 @@ const createRobotEyeAnimation = (
     byteCount: getByteCount(64),
     frames: {},
     drawFrame,
-    getArduinoCode: (size: number) => {
+    getArduinoCode: () => {
       const delay = Math.round(1000 / fps);
       return `#include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -160,7 +179,7 @@ void loop() {
   }
 }`;
     },
-    getMicroPythonCode: (size: number) => {
+    getMicroPythonCode: () => {
       const delay = Math.round(1000 / fps);
       return `# 0x1306.dev · animation: ${name} · robot_eyes · ${delay}ms
 import machine, ssd1306, time
@@ -191,15 +210,17 @@ while True:
     for i in range(${totalFrames}):
         draw_frame(i)
         time.sleep_ms(${delay})`;
-    }
+    },
   };
 };
 
 const fillRoundRectCanvas = (
   ctx: CanvasRenderingContext2D,
-  x: number, y: number,
-  w: number, h: number,
-  r: number
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
 ) => {
   if (r < 1) r = 1;
   ctx.beginPath();
@@ -213,16 +234,16 @@ const fillRoundRectCanvas = (
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = "#ffffff";
   ctx.fill();
 };
 
 export const animations: OLEDAnimation[] = [
   createBaseAnimation(
-    'happy_face',
-    'happy_face',
-    'emoji',
-    ['smile', 'happy', 'blinking'],
+    "happy_face",
+    "happy_face",
+    "emoji",
+    ["smile", "happy", "blinking"],
     [64],
     10,
     4,
@@ -230,9 +251,9 @@ export const animations: OLEDAnimation[] = [
       const cx = size / 2;
       const cy = size / 2;
       const r = size * 0.4;
-      
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#ffffff';
+
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 1;
 
       // Face outline
@@ -246,8 +267,18 @@ export const animations: OLEDAnimation[] = [
         ctx.fillRect(cx - size * 0.2, cy - size * 0.12, size * 0.14, 2);
         ctx.fillRect(cx + size * 0.06, cy - size * 0.12, size * 0.14, 2);
       } else {
-        ctx.fillRect(cx - size * 0.20, cy - size * 0.17, size * 0.09, size * 0.09);
-        ctx.fillRect(cx + size * 0.11, cy - size * 0.17, size * 0.09, size * 0.09);
+        ctx.fillRect(
+          cx - size * 0.2,
+          cy - size * 0.17,
+          size * 0.09,
+          size * 0.09,
+        );
+        ctx.fillRect(
+          cx + size * 0.11,
+          cy - size * 0.17,
+          size * 0.09,
+          size * 0.09,
+        );
       }
 
       // Smile - manual arc loop for visual parity with OLED
@@ -296,14 +327,14 @@ export const animations: OLEDAnimation[] = [
         x = int(cx + 15 * math.cos(rad))
         y = int(cy + 15 * math.sin(rad))
         if 0 <= x <= 127 and 0 <= y <= 63:
-            oled.pixel(x, y, 1)`
+            oled.pixel(x, y, 1)`,
   ),
 
   createBaseAnimation(
-    'sad_face',
-    'sad_face',
-    'emoji',
-    ['sad', 'frown', 'negative'],
+    "sad_face",
+    "sad_face",
+    "emoji",
+    ["sad", "frown", "negative"],
     [64],
     5,
     4,
@@ -311,9 +342,9 @@ export const animations: OLEDAnimation[] = [
       const cx = size / 2;
       const cy = size / 2;
       const r = size * 0.4;
-      
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#ffffff';
+
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 1;
 
       // Face outline
@@ -322,8 +353,13 @@ export const animations: OLEDAnimation[] = [
       ctx.stroke();
 
       // Eyes
-      ctx.fillRect(cx - size * 0.20, cy - size * 0.17, size * 0.09, size * 0.09);
-      ctx.fillRect(cx + size * 0.11, cy - size * 0.17, size * 0.09, size * 0.09);
+      ctx.fillRect(cx - size * 0.2, cy - size * 0.17, size * 0.09, size * 0.09);
+      ctx.fillRect(
+        cx + size * 0.11,
+        cy - size * 0.17,
+        size * 0.09,
+        size * 0.09,
+      );
 
       // Frown
       ctx.beginPath();
@@ -361,14 +397,14 @@ export const animations: OLEDAnimation[] = [
         x = int(cx + 13 * math.cos(rad))
         y = int(cy + 6 + 8 * math.sin(rad))  # +6 pushes it into lower half
         if 0 <= x <= 127 and 0 <= y <= 63:
-            oled.pixel(x, y, 1)`
+            oled.pixel(x, y, 1)`,
   ),
 
   createBaseAnimation(
-    'spinner',
-    'spinner',
-    'loaders',
-    ['loading', 'wait', 'spin'],
+    "spinner",
+    "spinner",
+    "loaders",
+    ["loading", "wait", "spin"],
     [32, 48],
     15,
     8,
@@ -376,10 +412,10 @@ export const animations: OLEDAnimation[] = [
       const cx = size / 2;
       const cy = size / 2;
       const baseAng = (frame / 8) * Math.PI * 2;
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = size * 0.1;
-      ctx.lineCap = 'round';
-      
+      ctx.lineCap = "round";
+
       ctx.beginPath();
       ctx.arc(cx, cy, size * 0.35, baseAng, baseAng + Math.PI * 1.5);
       ctx.stroke();
@@ -405,14 +441,14 @@ export const animations: OLEDAnimation[] = [
         angle = a + offset
         oled.pixel(int(cx + r * math.cos(angle)), int(cy + r * math.sin(angle)), 1)
         oled.pixel(int(cx + (r-1) * math.cos(angle)), int(cy + (r-1) * math.sin(angle)), 1)
-        a += 0.05`
+        a += 0.05`,
   ),
 
   createBaseAnimation(
-    'progress_bar',
-    'progress_bar',
-    'loaders',
-    ['loading', 'bar', 'progress'],
+    "progress_bar",
+    "progress_bar",
+    "loaders",
+    ["loading", "bar", "progress"],
     [64],
     8,
     8,
@@ -422,12 +458,12 @@ export const animations: OLEDAnimation[] = [
       const x = (size - w) / 2;
       const y = (size - h) / 2;
 
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 1;
       ctx.strokeRect(x, y, w, h);
 
       const fillProgress = (frame / 7) * (w - 4);
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = "#ffffff";
       ctx.fillRect(x + 2, y + 2, fillProgress, h - 4);
     },
     `  // --- progress bar ---
@@ -440,24 +476,24 @@ export const animations: OLEDAnimation[] = [
     oled.rect(14, 24, 100, 16, 1)
     oled.fill_rect(16, 26, int((frame * 100) / 7 - 4), 12, 1)
     
-    oled.text(str(int((frame * 100) / 7)) + "%", 54, 45, 1)`
+    oled.text(str(int((frame * 100) / 7)) + "%", 54, 45, 1)`,
   ),
 
   createBaseAnimation(
-    'wifi_connecting',
-    'wifi_connecting',
-    'icons',
-    ['wifi', 'network', 'connect'],
+    "wifi_connecting",
+    "wifi_connecting",
+    "icons",
+    ["wifi", "network", "connect"],
     [32, 48],
     4,
     4,
     (ctx, frame, size) => {
       const cx = size / 2;
       const cy = size * 0.7;
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#ffffff';
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = size * 0.08;
-      ctx.lineCap = 'round';
+      ctx.lineCap = "round";
 
       if (frame >= 0) {
         ctx.beginPath();
@@ -514,21 +550,21 @@ export const animations: OLEDAnimation[] = [
     # manual slope masking for wedge
     for i in range(48):
         oled.hline(0, cy - i, 64 - i, 0)
-        oled.hline(64 + i, cy - i, 64, 0)`
+        oled.hline(64 + i, cy - i, 64, 0)`,
   ),
 
   createBaseAnimation(
-    'diya_flame',
-    'diya_flame',
-    'indian',
-    ['diya', 'lamp', 'festival'],
+    "diya_flame",
+    "diya_flame",
+    "indian",
+    ["diya", "lamp", "festival"],
     [48, 64],
     12,
     6,
     (ctx, frame, size) => {
       const cx = size / 2;
       const cy = size * 0.6;
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = "#ffffff";
 
       // Base
       ctx.beginPath();
@@ -537,16 +573,36 @@ export const animations: OLEDAnimation[] = [
       ctx.fill();
 
       // Flame
-      const isFlicker = (frame % 3) === 0;
-      const fx = cx + (isFlicker ? (size * 0.02) : 0);
-      const fy = cy - size * 0.15 + (isFlicker ? (size * 0.02) : 0);
+      const isFlicker = frame % 3 === 0;
+      const fx = cx + (isFlicker ? size * 0.02 : 0);
+      const fy = cy - size * 0.15 + (isFlicker ? size * 0.02 : 0);
 
       ctx.beginPath();
       ctx.moveTo(fx, fy - size * 0.25);
-      ctx.quadraticCurveTo(fx + size * 0.1, fy - size * 0.1, fx + size * 0.1, fy);
-      ctx.quadraticCurveTo(fx + size * 0.1, fy + size * 0.1, fx, fy + size * 0.1);
-      ctx.quadraticCurveTo(fx - size * 0.1, fy + size * 0.1, fx - size * 0.1, fy);
-      ctx.quadraticCurveTo(fx - size * 0.1, fy - size * 0.1, fx, fy - size * 0.25);
+      ctx.quadraticCurveTo(
+        fx + size * 0.1,
+        fy - size * 0.1,
+        fx + size * 0.1,
+        fy,
+      );
+      ctx.quadraticCurveTo(
+        fx + size * 0.1,
+        fy + size * 0.1,
+        fx,
+        fy + size * 0.1,
+      );
+      ctx.quadraticCurveTo(
+        fx - size * 0.1,
+        fy + size * 0.1,
+        fx - size * 0.1,
+        fy,
+      );
+      ctx.quadraticCurveTo(
+        fx - size * 0.1,
+        fy - size * 0.1,
+        fx,
+        fy - size * 0.25,
+      );
       ctx.fill();
     },
     `  int cx = 64;
@@ -592,25 +648,25 @@ export const animations: OLEDAnimation[] = [
     
     oled.ellipse(fx, fy - 2, 6, 6, 1, True)
     for i in range(12):
-        oled.hline(fx - i//2, fy - 14 + i, i, 1)`
+        oled.hline(fx - i//2, fy - 14 + i, i, 1)`,
   ),
 
   createBaseAnimation(
-    'cricket_bat',
-    'cricket_bat',
-    'indian',
-    ['cricket', 'sport', 'bat', 'swing'],
+    "cricket_bat",
+    "cricket_bat",
+    "indian",
+    ["cricket", "sport", "bat", "swing"],
     [64],
     12,
     8,
     (ctx, frame, size) => {
       const cx = size * 0.4;
       const cy = size * 0.7;
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = "#ffffff";
 
       // Ball
-      const ballX = cx - (frame * size * 0.08) + size * 0.3;
-      const ballY = cy + size * 0.1 - (frame * size * 0.05);
+      const ballX = cx - frame * size * 0.08 + size * 0.3;
+      const ballY = cy + size * 0.1 - frame * size * 0.05;
       if (frame > 2) {
         ctx.beginPath();
         ctx.arc(ballX, ballY, 2, 0, Math.PI * 2);
@@ -621,7 +677,10 @@ export const animations: OLEDAnimation[] = [
       ctx.save();
       ctx.translate(cx, cy);
       // Swing logic
-      const rotation = frame < 4 ? -Math.PI / 4 + (frame * 0.15) : -Math.PI / 4 + (3 * 0.15) - ((frame - 3) * 0.3);
+      const rotation =
+        frame < 4
+          ? -Math.PI / 4 + frame * 0.15
+          : -Math.PI / 4 + 3 * 0.15 - (frame - 3) * 0.3;
       ctx.rotate(rotation);
 
       // Handle
@@ -634,7 +693,7 @@ export const animations: OLEDAnimation[] = [
       ctx.quadraticCurveTo(0, 5, -5, 0);
       ctx.closePath();
       ctx.fill();
-      
+
       ctx.restore();
     },
     `  int cx = 50;
@@ -677,29 +736,36 @@ export const animations: OLEDAnimation[] = [
     
     oled.line(cx, cy, hx[frame], hy[frame], 1)
     for offset in range(-3, 4):
-        oled.line(hx[frame] + offset, hy[frame], tx[frame] + offset, ty[frame], 1)`
+        oled.line(hx[frame] + offset, hy[frame], tx[frame] + offset, ty[frame], 1)`,
   ),
 
   createBaseAnimation(
-    'chai_cup',
-    'chai_cup',
-    'indian',
-    ['tea', 'drink', 'cup'],
+    "chai_cup",
+    "chai_cup",
+    "indian",
+    ["tea", "drink", "cup"],
     [48],
     8,
     4,
     (ctx, frame, size) => {
       const cx = size / 2;
       const cy = size * 0.65;
-      ctx.strokeStyle = '#ffffff';
-      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = "#ffffff";
+      ctx.fillStyle = "#ffffff";
       ctx.lineWidth = 1;
 
       // Steam wisps
-      const steamYArray = [[-8, -10, -8], [-10, -8, -10], [-8, -10, -10], [-10, -8, -8], [-8, -8, -10], [-10, -10, -8]];
+      const steamYArray = [
+        [-8, -10, -8],
+        [-10, -8, -10],
+        [-8, -10, -10],
+        [-10, -8, -8],
+        [-8, -8, -10],
+        [-10, -10, -8],
+      ];
       const sy = steamYArray[frame % 6];
       ctx.fillRect(cx - 10, cy - 18 + sy[0], 2, 8);
-      ctx.fillRect(cx,      cy - 18 + sy[1], 2, 8);
+      ctx.fillRect(cx, cy - 18 + sy[1], 2, 8);
       ctx.fillRect(cx + 10, cy - 18 + sy[2], 2, 8);
 
       // Cup Body (Trapezoid)
@@ -766,22 +832,22 @@ export const animations: OLEDAnimation[] = [
     oled.ellipse(cx + cup_top_w // 2 + 5, cy, 5, 8, 1)
     oled.fill_rect(cx + cup_top_w // 2 + 5 - 6, cy - 9, 6, 18, 0)
     # --- saucer ---
-    oled.hline(cx - 22, cup_bot_y + 3, 44, 1)`
+    oled.hline(cx - 22, cup_bot_y + 3, 44, 1)`,
   ),
 
   createBaseAnimation(
-    'auto_rickshaw',
-    'auto_rickshaw',
-    'indian',
-    ['rickshaw', 'tuk_tuk', 'vehicle'],
+    "auto_rickshaw",
+    "auto_rickshaw",
+    "indian",
+    ["rickshaw", "tuk_tuk", "vehicle"],
     [64],
     10,
     6,
     (ctx, frame, size) => {
       const cx = size / 2;
       const cy = size / 2;
-      ctx.strokeStyle = '#ffffff';
-      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = "#ffffff";
+      ctx.fillStyle = "#ffffff";
       ctx.lineWidth = 1;
 
       // Chassis
@@ -810,11 +876,15 @@ export const animations: OLEDAnimation[] = [
       const tireAnim = frame % 2 === 0;
       const drive = cx - 10;
       const front = cx + 12;
-      ctx.beginPath(); ctx.arc(drive, cy + 10, 4, 0, Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(front, cy + 10, 3, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(drive, cy + 10, 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(front, cy + 10, 3, 0, Math.PI * 2);
+      ctx.stroke();
       if (tireAnim) {
-        ctx.fillRect(drive-1, cy+9, 2, 2);
-        ctx.fillRect(front-1, cy+9, 2, 2);
+        ctx.fillRect(drive - 1, cy + 9, 2, 2);
+        ctx.fillRect(front - 1, cy + 9, 2, 2);
       }
     },
     `  int cx = 64;
@@ -885,14 +955,14 @@ export const animations: OLEDAnimation[] = [
     oled.line(driveX, wY, int(driveX + 4 * math.cos(angle)), int(wY + 4 * math.sin(angle)), 1)
     oled.line(driveX, wY, int(driveX - 4 * math.cos(angle)), int(wY - 4 * math.sin(angle)), 1)
     oled.line(frontX, wY, int(frontX + 3 * math.cos(angle)), int(wY + 3 * math.sin(angle)), 1)
-    oled.line(frontX, wY, int(frontX - 3 * math.cos(angle)), int(wY - 3 * math.sin(angle)), 1)`
+    oled.line(frontX, wY, int(frontX - 3 * math.cos(angle)), int(wY - 3 * math.sin(angle)), 1)`,
   ),
 
   createBaseAnimation(
-    'rupee_pulse',
-    'rupee_pulse',
-    'indian',
-    ['money', 'rupee', 'pulse'],
+    "rupee_pulse",
+    "rupee_pulse",
+    "indian",
+    ["money", "rupee", "pulse"],
     [48],
     12,
     6,
@@ -900,18 +970,18 @@ export const animations: OLEDAnimation[] = [
       const cx = size / 2;
       const cy = size / 2;
 
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#ffffff';
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#ffffff";
 
       // ₹ Symbol
       ctx.font = `${size * 0.4}px JetBrains Mono`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('₹', cx, cy);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("₹", cx, cy);
 
       // Pulse
       const r = (frame / 6) * (size * 0.4);
-      ctx.globalAlpha = 1 - (frame / 6);
+      ctx.globalAlpha = 1 - frame / 6;
       ctx.beginPath();
       ctx.arc(cx, cy, Math.max(1, r), 0, Math.PI * 2);
       ctx.stroke();
@@ -958,29 +1028,29 @@ export const animations: OLEDAnimation[] = [
             oled.ellipse(cx, cy, r, r, 1)
         else:
             for i in range(0, 360, 20):
-                oled.pixel(int(cx + r*math.cos(i*math.pi/180)), int(cy + r*math.sin(i*math.pi/180)), 1)`
+                oled.pixel(int(cx + r*math.cos(i*math.pi/180)), int(cy + r*math.sin(i*math.pi/180)), 1)`,
   ),
 
   createBaseAnimation(
-    'train_moving',
-    'train_moving',
-    'indian',
-    ['train', 'vehicle', 'travel'],
+    "train_moving",
+    "train_moving",
+    "indian",
+    ["train", "vehicle", "travel"],
     [64],
     15,
     8,
     (ctx, frame, size) => {
       const cx = size / 2;
       const cy = size / 2 + size * 0.1;
-      
+
       // Motion offset mapping
       const offset = -(frame * size * 0.05) % (size * 0.5);
 
       ctx.save();
       ctx.translate(offset, 0);
 
-      ctx.strokeStyle = '#ffffff';
-      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = "#ffffff";
+      ctx.fillStyle = "#ffffff";
       ctx.lineWidth = 1;
 
       // Track
@@ -990,23 +1060,27 @@ export const animations: OLEDAnimation[] = [
       ctx.stroke();
 
       for (let i = 0; i < 3; i++) {
-        const carX = cx + (i * size * 0.4);
+        const carX = cx + i * size * 0.4;
         // Box
         ctx.fillRect(carX, cy - 15, size * 0.35, 18);
-        
-        ctx.fillStyle = '#000000';
+
+        ctx.fillStyle = "#000000";
         ctx.fillRect(carX + 5, cy - 10, 6, 6);
         ctx.fillRect(carX + 15, cy - 10, 6, 6);
-        
-        ctx.fillStyle = '#ffffff';
+
+        ctx.fillStyle = "#ffffff";
         // Connectors
         if (i < 2) {
           ctx.fillRect(carX + size * 0.35, cy - 2, size * 0.05, 2);
         }
 
         // Wheels
-        ctx.beginPath(); ctx.arc(carX + 5, cy + 3, 2, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(carX + size * 0.35 - 5, cy + 3, 2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath();
+        ctx.arc(carX + 5, cy + 3, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(carX + size * 0.35 - 5, cy + 3, 2, 0, Math.PI * 2);
+        ctx.fill();
       }
 
       ctx.restore();
@@ -1059,14 +1133,14 @@ export const animations: OLEDAnimation[] = [
 
         # wheels
         oled.ellipse(car_x + 5, cy + 3, 2, 2, 1, True)
-        oled.ellipse(car_x + 17, cy + 3, 2, 2, 1, True)`
+        oled.ellipse(car_x + 17, cy + 3, 2, 2, 1, True)`,
   ),
 
   createBaseAnimation(
-    'diwali_burst',
-    'diwali_burst',
-    'festival',
-    ['firework', 'diwali', 'spark'],
+    "diwali_burst",
+    "diwali_burst",
+    "festival",
+    ["firework", "diwali", "spark"],
     [64],
     12,
     8,
@@ -1074,15 +1148,18 @@ export const animations: OLEDAnimation[] = [
       const cx = size / 2;
       const cy = size / 2;
 
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = "#ffffff";
       const r = (frame / 8) * (size * 0.4);
 
       if (frame > 0) {
-        ctx.lineWidth = Math.max(1, 3 - (frame * 0.3));
+        ctx.lineWidth = Math.max(1, 3 - frame * 0.3);
         for (let i = 0; i < 8; i++) {
           const ang = (i * Math.PI) / 4;
           ctx.beginPath();
-          ctx.moveTo(cx + Math.cos(ang) * (r * 0.5), cy + Math.sin(ang) * (r * 0.5));
+          ctx.moveTo(
+            cx + Math.cos(ang) * (r * 0.5),
+            cy + Math.sin(ang) * (r * 0.5),
+          );
           ctx.lineTo(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r);
           ctx.stroke();
         }
@@ -1117,32 +1194,32 @@ export const animations: OLEDAnimation[] = [
             y1 = cy + length * math.sin(ang)
             
             oled.line(int(x0), int(y0), int(x1), int(y1), 1)
-            oled.pixel(int(x1 + 2 * math.cos(ang)), int(y1 + 2 * math.sin(ang)), 1)`
+            oled.pixel(int(x1 + 2 * math.cos(ang)), int(y1 + 2 * math.sin(ang)), 1)`,
   ),
 
   createBaseAnimation(
-    'flag_wave',
-    'flag_wave',
-    'festival',
-    ['flag', 'india', 'tricolor', 'wave'],
+    "flag_wave",
+    "flag_wave",
+    "festival",
+    ["flag", "india", "tricolor", "wave"],
     [64],
     10,
     6,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const waveArray = [0, 1, 2, 3, 2, 1];
       const w = waveArray[frame % 6];
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#ffffff';
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 1;
 
       // Pole
       ctx.fillRect(20, 4, 2, 56);
-      
+
       // Flag Body
       const flagX = 21;
       const flagW = 60 + w;
       const flagYTop = 8;
-      
+
       ctx.fillRect(flagX, flagYTop, flagW, 10);
       ctx.strokeRect(flagX, flagYTop + 10, flagW, 10);
       ctx.fillRect(flagX, flagYTop + 20, flagW, 10);
@@ -1181,44 +1258,44 @@ export const animations: OLEDAnimation[] = [
     # band 3 - bottom
     oled.fill_rect(flag_x, flag_y_top + 20, flag_w, 10, 1)
     # chakra
-    oled.ellipse(flag_x + flag_w // 2, flag_y_top + 15, 4, 4, 1)`
+    oled.ellipse(flag_x + flag_w // 2, flag_y_top + 15, 4, 4, 1)`,
   ),
   createRobotEyeAnimation(
-    'eyes_default',
-    'eyes_default',
-    ['robot', 'eyes', 'blink', 'idle'],
+    "eyes_default",
+    "eyes_default",
+    ["robot", "eyes", "blink", "idle"],
     10,
     4,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const h = [28, 28, 2, 28][frame % 4];
       const r = frame === 2 ? 1 : 8;
-      fillRoundRectCanvas(ctx, 32 - 19, 32 - h/2, 38, h, r);
-      fillRoundRectCanvas(ctx, 96 - 19, 32 - h/2, 38, h, r);
+      fillRoundRectCanvas(ctx, 32 - 19, 32 - h / 2, 38, h, r);
+      fillRoundRectCanvas(ctx, 96 - 19, 32 - h / 2, 38, h, r);
     },
     `    int h[] = {28, 28, 2, 28};
     int r = (frame == 2) ? 1 : 8;
     drawEyes(32, 32, 38, h[frame], r, 96, 32, 38, h[frame], r);`,
     `    h = [28, 28, 2, 28][frame % 4]
     r = 1 if frame == 2 else 8
-    draw_eyes(32, 32, 38, h, r, 96, 32, 38, h, r)`
+    draw_eyes(32, 32, 38, h, r, 96, 32, 38, h, r)`,
   ),
   createRobotEyeAnimation(
-    'eyes_happy',
-    'eyes_happy',
-    ['robot', 'eyes', 'happy', 'squish'],
+    "eyes_happy",
+    "eyes_happy",
+    ["robot", "eyes", "happy", "squish"],
     10,
     4,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const h = [28, 24, 18, 24][frame % 4];
       const y = [32, 34, 37, 34][frame % 4];
       const r = 8;
       const drawHappyEye = (cx: number) => {
-        fillRoundRectCanvas(ctx, cx - 19, y - h/2, 38, h, r);
+        fillRoundRectCanvas(ctx, cx - 19, y - h / 2, 38, h, r);
         const topFlatten = 28 - h;
         if (topFlatten > 0) {
           ctx.save();
-          ctx.globalCompositeOperation = 'destination-out';
-          ctx.fillRect(cx - 19, y - h/2, 38, topFlatten/2);
+          ctx.globalCompositeOperation = "destination-out";
+          ctx.fillRect(cx - 19, y - h / 2, 38, topFlatten / 2);
           ctx.restore();
         }
       };
@@ -1239,24 +1316,26 @@ export const animations: OLEDAnimation[] = [
     if h < 28:
        flatten = (28 - h) // 2
        oled.fill_rect(32-19, y-h//2, 38, flatten, 0)
-       oled.fill_rect(96-19, y-h//2, 38, flatten, 0)`
+       oled.fill_rect(96-19, y-h//2, 38, flatten, 0)`,
   ),
   createRobotEyeAnimation(
-    'eyes_angry',
-    'eyes_angry',
-    ['robot', 'eyes', 'angry', 'mean'],
+    "eyes_angry",
+    "eyes_angry",
+    ["robot", "eyes", "angry", "mean"],
     10,
     4,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const th = [0, 6, 12, 6][frame % 4];
       const drawAngryEye = (cx: number, isRight: boolean) => {
         fillRoundRectCanvas(ctx, cx - 19, 32 - 14, 38, 28, 8);
         if (th > 0) {
           ctx.save();
-          ctx.globalCompositeOperation = 'destination-out';
-          if (!isRight) { // left eye inner top corner (right side)
+          ctx.globalCompositeOperation = "destination-out";
+          if (!isRight) {
+            // left eye inner top corner (right side)
             ctx.fillRect(cx, 32 - 14, 19, th);
-          } else { // right eye inner top corner (left side)
+          } else {
+            // right eye inner top corner (left side)
             ctx.fillRect(cx - 19, 32 - 14, 19, th);
           }
           ctx.restore();
@@ -1275,21 +1354,21 @@ export const animations: OLEDAnimation[] = [
     draw_eyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8)
     if th > 0:
         oled.fill_rect(32, 32-14, 19, th, 0)
-        oled.fill_rect(96-19, 32-14, 19, th, 0)`
+        oled.fill_rect(96-19, 32-14, 19, th, 0)`,
   ),
   createRobotEyeAnimation(
-    'eyes_sleepy',
-    'eyes_sleepy',
-    ['robot', 'eyes', 'sleepy', 'tired'],
+    "eyes_sleepy",
+    "eyes_sleepy",
+    ["robot", "eyes", "sleepy", "tired"],
     8,
     6,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const h = [28, 22, 14, 8, 14, 22][frame % 6];
       const drawSleepyEye = (cx: number) => {
-        fillRoundRectCanvas(ctx, cx - 19, 32 - 14 + (28-h), 38, h, 4);
+        fillRoundRectCanvas(ctx, cx - 19, 32 - 14 + (28 - h), 38, h, 4);
         // eyelid
         ctx.save();
-        ctx.globalCompositeOperation = 'destination-out';
+        ctx.globalCompositeOperation = "destination-out";
         ctx.fillRect(cx - 19, 32 - 14, 38, 10);
         ctx.restore();
       };
@@ -1305,36 +1384,50 @@ export const animations: OLEDAnimation[] = [
     h = heights[frame % 6]
     draw_eyes(32, 32 + (28-h)//2, 38, h, 4, 96, 32 + (28-h)//2, 38, h, 4)
     oled.fill_rect(32-19, 32-14, 38, 10, 0)
-    oled.fill_rect(96-19, 32-14, 38, 10, 0)`
+    oled.fill_rect(96-19, 32-14, 38, 10, 0)`,
   ),
   createRobotEyeAnimation(
-    'eyes_suspicious',
-    'eyes_suspicious',
-    ['robot', 'eyes', 'suspicious', 'squint'],
+    "eyes_suspicious",
+    "eyes_suspicious",
+    ["robot", "eyes", "suspicious", "squint"],
     10,
     4,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const hLeft = [28, 20, 12, 20][frame % 4];
-      fillRoundRectCanvas(ctx, 32 - 19, 32 - hLeft/2, 38, hLeft, 8);
+      fillRoundRectCanvas(ctx, 32 - 19, 32 - hLeft / 2, 38, hLeft, 8);
       fillRoundRectCanvas(ctx, 96 - 19, 32 - 14, 38, 28, 8);
     },
     `    int hLeft[] = {28, 20, 12, 20};
     drawEyes(32, 32, 38, hLeft[frame], 8, 96, 32, 38, 28, 8);`,
     `    h_left = [28, 20, 12, 20][frame % 4]
-    draw_eyes(32, 32, 38, h_left, 8, 96, 32, 38, 28, 8)`
+    draw_eyes(32, 32, 38, h_left, 8, 96, 32, 38, 28, 8)`,
   ),
   createRobotEyeAnimation(
-    'eyes_wide',
-    'eyes_wide',
-    ['robot', 'eyes', 'wide', 'surprise'],
+    "eyes_wide",
+    "eyes_wide",
+    ["robot", "eyes", "wide", "surprise"],
     10,
     4,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const dw = [0, 4, 8, 4][frame % 4];
       const dh = [0, 4, 8, 4][frame % 4];
-      const r = 8 + dw/2;
-      fillRoundRectCanvas(ctx, 32 - (38+dw)/2, 32 - (28+dh)/2, 38+dw, 28+dh, r);
-      fillRoundRectCanvas(ctx, 96 - (38+dw)/2, 32 - (28+dh)/2, 38+dw, 28+dh, r);
+      const r = 8 + dw / 2;
+      fillRoundRectCanvas(
+        ctx,
+        32 - (38 + dw) / 2,
+        32 - (28 + dh) / 2,
+        38 + dw,
+        28 + dh,
+        r,
+      );
+      fillRoundRectCanvas(
+        ctx,
+        96 - (38 + dw) / 2,
+        32 - (28 + dh) / 2,
+        38 + dw,
+        28 + dh,
+        r,
+      );
     },
     `    int d[] = {0, 4, 8, 4};
     int w = 38 + d[frame];
@@ -1343,19 +1436,19 @@ export const animations: OLEDAnimation[] = [
     drawEyes(32, 32, w, h, r, 96, 32, w, h, r);`,
     `    d = [0, 4, 8, 4][frame % 4]
     w, h, r = 38 + d, 28 + d, 8 + d//2
-    draw_eyes(32, 32, w, h, r, 96, 32, w, h, r)`
+    draw_eyes(32, 32, w, h, r, 96, 32, w, h, r)`,
   ),
   createRobotEyeAnimation(
-    'eyes_look_right',
-    'eyes_look_right',
-    ['robot', 'eyes', 'look', 'right'],
+    "eyes_look_right",
+    "eyes_look_right",
+    ["robot", "eyes", "look", "right"],
     8,
     6,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const ox = [0, 4, 8, 10, 8, 4][frame % 6];
       const drawEyeWithPupil = (cx: number) => {
         fillRoundRectCanvas(ctx, cx - 19, 32 - 14, 38, 28, 8);
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = "#000000";
         ctx.beginPath();
         ctx.arc(cx + ox, 32, 8, 0, Math.PI * 2);
         ctx.fill();
@@ -1371,20 +1464,20 @@ export const animations: OLEDAnimation[] = [
     draw_eyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8)
     oled.ellipse(32 + ox, 32, 8, 8, 0)
     oled.ellipse(96 + ox, 32, 8, 8, 0)
-    oled.show()`
+    oled.show()`,
   ),
   createRobotEyeAnimation(
-    'eyes_look_left',
-    'eyes_look_left',
-    ['robot', 'eyes', 'look', 'left'],
+    "eyes_look_left",
+    "eyes_look_left",
+    ["robot", "eyes", "look", "left"],
     8,
     6,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const ox = [0, -4, -8, -10, -8, -4][frame % 6];
       const drawEyeWithPupil = (cx: number) => {
         fillRoundRectCanvas(ctx, cx - 19, 32 - 14, 38, 28, 8);
         ctx.save();
-        ctx.globalCompositeOperation = 'destination-out';
+        ctx.globalCompositeOperation = "destination-out";
         ctx.beginPath();
         ctx.arc(cx + ox, 32, 8, 0, Math.PI * 2);
         ctx.fill();
@@ -1401,20 +1494,20 @@ export const animations: OLEDAnimation[] = [
     draw_eyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8)
     oled.ellipse(32 + ox, 32, 8, 8, 0)
     oled.ellipse(96 + ox, 32, 8, 8, 0)
-    oled.show()`
+    oled.show()`,
   ),
   createRobotEyeAnimation(
-    'eyes_doughnut',
-    'eyes_doughnut',
-    ['robot', 'eyes', 'ring', 'spidermaf'],
+    "eyes_doughnut",
+    "eyes_doughnut",
+    ["robot", "eyes", "ring", "spidermaf"],
     8,
     4,
-    (ctx, frame, size) => {
+    (ctx) => {
       const drawRingEye = (cx: number) => {
         fillRoundRectCanvas(ctx, cx - 19, 32 - 14, 38, 28, 8);
-        ctx.globalCompositeOperation = 'destination-out';
+        ctx.globalCompositeOperation = "destination-out";
         fillRoundRectCanvas(ctx, cx - 9, 32 - 5, 18, 10, 4);
-        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalCompositeOperation = "source-over";
       };
       drawRingEye(32);
       drawRingEye(96);
@@ -1425,70 +1518,70 @@ export const animations: OLEDAnimation[] = [
     display.fillRoundRect(96 - 9, 32 - 5, 18, 10, 4, BLACK);`,
     `    draw_eyes(32, 32, 38, 28, 8, 96, 32, 38, 28, 8)
     fill_round_rect(32 - 9, 32 - 5, 18, 10, 4, 0)
-    fill_round_rect(96 - 9, 32 - 5, 18, 10, 4, 0)`
+    fill_round_rect(96 - 9, 32 - 5, 18, 10, 4, 0)`,
   ),
   createRobotEyeAnimation(
-    'eyes_pill_tall',
-    'eyes_pill_tall',
-    ['robot', 'eyes', 'tall', 'vinny'],
+    "eyes_pill_tall",
+    "eyes_pill_tall",
+    ["robot", "eyes", "tall", "vinny"],
     8,
     4,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const h = [42, 40, 38, 40][frame % 4];
-      fillRoundRectCanvas(ctx, 32 - 12, 32 - h/2, 24, h, 12);
-      fillRoundRectCanvas(ctx, 96 - 12, 32 - h/2, 24, h, 12);
+      fillRoundRectCanvas(ctx, 32 - 12, 32 - h / 2, 24, h, 12);
+      fillRoundRectCanvas(ctx, 96 - 12, 32 - h / 2, 24, h, 12);
     },
     `    int h[] = {42, 40, 38, 40};
     drawEyes(32, 32, 24, h[frame], 12, 96, 32, 24, h[frame], 12);`,
     `    h = [42, 40, 38, 40][frame % 4]
-    draw_eyes(32, 32, 24, h, 12, 96, 32, 24, h, 12)`
+    draw_eyes(32, 32, 24, h, 12, 96, 32, 24, h, 12)`,
   ),
   createRobotEyeAnimation(
-    'eyes_pill_wide',
-    'eyes_pill_wide',
-    ['robot', 'eyes', 'wide', 'abdulsalam'],
+    "eyes_pill_wide",
+    "eyes_pill_wide",
+    ["robot", "eyes", "wide", "abdulsalam"],
     8,
     4,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const w = [50, 48, 46, 48][frame % 4];
-      fillRoundRectCanvas(ctx, 32 - w/2, 32 - 12, w, 24, 8);
-      fillRoundRectCanvas(ctx, 96 - w/2, 32 - 12, w, 24, 8);
+      fillRoundRectCanvas(ctx, 32 - w / 2, 32 - 12, w, 24, 8);
+      fillRoundRectCanvas(ctx, 96 - w / 2, 32 - 12, w, 24, 8);
     },
     `    int w[] = {50, 48, 46, 48};
     drawEyes(32, 32, w[frame], 24, 8, 96, 32, w[frame], 24, 8);`,
     `    w = [50, 48, 46, 48][frame % 4]
-    draw_eyes(32, 32, w, 24, 8, 96, 32, w, 24, 8)`
+    draw_eyes(32, 32, w, 24, 8, 96, 32, w, 24, 8)`,
   ),
   createRobotEyeAnimation(
-    'eyes_mini',
-    'eyes_mini',
-    ['robot', 'eyes', 'small', 'picajo'],
+    "eyes_mini",
+    "eyes_mini",
+    ["robot", "eyes", "small", "picajo"],
     6,
     4,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const s = [0, 1, 2, 1][frame % 4];
-      fillRoundRectCanvas(ctx, 32 - 14, 32 - 11 + s, 28, 22 - s*2, 6);
-      fillRoundRectCanvas(ctx, 96 - 14, 32 - 11 + s, 28, 22 - s*2, 6);
+      fillRoundRectCanvas(ctx, 32 - 14, 32 - 11 + s, 28, 22 - s * 2, 6);
+      fillRoundRectCanvas(ctx, 96 - 14, 32 - 11 + s, 28, 22 - s * 2, 6);
     },
     `    int s[] = {0, 1, 2, 1};
     drawEyes(32, 32, 28, 22 - s[frame]*2, 6, 96, 32, 28, 22 - s[frame]*2, 6);`,
     `    s = [0, 1, 2, 1][frame % 4]
-    draw_eyes(32, 32, 28, 22 - s*2, 6, 96, 32, 28, 22 - s*2, 6)`
+    draw_eyes(32, 32, 28, 22 - s*2, 6, 96, 32, 28, 22 - s*2, 6)`,
   ),
   createRobotEyeAnimation(
-    'eyes_glitch',
-    'eyes_glitch',
-    ['robot', 'eyes', 'glitch', 'error'],
+    "eyes_glitch",
+    "eyes_glitch",
+    ["robot", "eyes", "glitch", "error"],
     12,
     6,
-    (ctx, frame, size) => {
+    (ctx, frame) => {
       const ox = [0, 2, -2, 4, -1, 0][frame % 6];
       const oy = [0, -2, 3, -1, 2, 0][frame % 6];
       if (frame % 3 === 0) {
         fillRoundRectCanvas(ctx, 32 - 19 + ox, 32 - 14 + oy, 38, 28, 8);
         fillRoundRectCanvas(ctx, 96 - 19 - ox, 32 - 14 - oy, 38, 28, 8);
       } else {
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = "#ffffff";
         ctx.fillRect(32 - 19, 32 - 2, 38, 4);
         ctx.fillRect(96 - 19, 32 - 2, 38, 4);
       }
@@ -1511,6 +1604,6 @@ export const animations: OLEDAnimation[] = [
         oled.fill(0)
         oled.fill_rect(32-19, 32-2, 38, 4, 1)
         oled.fill_rect(96-19, 32-2, 38, 4, 1)
-        oled.show()`
-  )
+        oled.show()`,
+  ),
 ];
