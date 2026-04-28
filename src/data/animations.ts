@@ -22,10 +22,17 @@ export interface OLEDAnimation {
   ) => void;
   getArduinoCode: (size: number) => string;
   getMicroPythonCode: (size: number) => string;
+  creator: string;
+  createdAt: string;
 }
 
 // Helpers
 const getByteCount = (size: number) => (size * size) / 8;
+
+// Defaults applied to every existing animation. New animations can override
+// by passing creator/createdAt to the factory.
+const DEFAULT_CREATOR = "0x1306";
+const DEFAULT_CREATED_AT = "2026-04-27";
 
 const createBaseAnimation = (
   id: string,
@@ -42,6 +49,8 @@ const createBaseAnimation = (
   ) => void,
   arduinoDrawCalls: string,
   microPythonDrawCalls: string,
+  creator: string = DEFAULT_CREATOR,
+  createdAt: string = DEFAULT_CREATED_AT,
 ): OLEDAnimation => {
   const maxBytes = Math.max(...supportedSizes.map(getByteCount));
 
@@ -56,6 +65,8 @@ const createBaseAnimation = (
     byteCount: maxBytes,
     frames: {},
     drawFrame,
+    creator,
+    createdAt,
     getArduinoCode: () => {
       const delay = Math.round(1000 / fps);
       return `#include <Wire.h>
@@ -131,6 +142,8 @@ const createRobotEyeAnimation = (
   ) => void,
   arduinoDrawCalls: string,
   microPythonDrawCalls: string,
+  creator: string = DEFAULT_CREATOR,
+  createdAt: string = DEFAULT_CREATED_AT,
 ): OLEDAnimation => {
   return {
     id,
@@ -143,6 +156,8 @@ const createRobotEyeAnimation = (
     byteCount: getByteCount(64),
     frames: {},
     drawFrame,
+    creator,
+    createdAt,
     getArduinoCode: () => {
       const delay = Math.round(1000 / fps);
       return `#include <Wire.h>

@@ -7,7 +7,7 @@ import Footer from '@/components/Footer';
 import { animations } from '@/data/animations';
 
 export default function Home() {
-  const [activeCategory, setActiveCategory] = useState<string>('loaders');
+  const [activeCategory, setActiveCategory] = useState<string>('all');
   const [activeSize, setActiveSize] = useState<32 | 48 | 64>(64);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAnimation, setSelectedAnimation] = useState(animations[0]);
