@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     }
     await incrementRuns(slug);
     return NextResponse.json({ ok: true });
-  } catch (e) {
+  } catch {
     // Never fail user-facing flows on KV errors.
     return NextResponse.json({ ok: true, warning: "tracking_unavailable" });
   }

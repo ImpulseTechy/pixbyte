@@ -112,7 +112,7 @@ export default async function OGImage({
             0x1306
           </div>
           <div style={{ color: DIM, fontSize: 18, display: "flex" }}>
-            // oled animation tool for esp32
+            {"// oled animation tool for esp32"}
           </div>
         </div>
 
