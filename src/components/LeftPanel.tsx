@@ -1,11 +1,24 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { OLEDAnimation, animations } from '@/data/animations';
 import OLEDCanvas from './OLEDCanvas';
 
 const CATEGORIES = ['all', 'emoji', 'robot_eyes', 'icons', 'loaders', 'indian', 'festival', 'text_fx'];
 const SIZES = [32, 48, 64] as const;
+
+type SortKey = 'recent' | 'most_run' | 'most_viewed';
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'recent', label: 'recent' },
+  { value: 'most_run', label: 'most run' },
+  { value: 'most_viewed', label: 'most viewed' },
+];
+
+interface Counters {
+  views: number | null;
+  runs: number | null;
+}
 
 interface Props {
   activeCategory: string;
@@ -18,6 +31,11 @@ interface Props {
   setSelectedAnimation: (anim: OLEDAnimation) => void;
 }
 
+const formatCount = (n: number | null): string => {
+  if (n === null || n === undefined) return '—';
+  return n.toLocaleString('en-US');
+};
+
 export default function LeftPanel({
   activeCategory,
   setActiveCategory,
@@ -29,6 +47,46 @@ export default function LeftPanel({
   setSelectedAnimation
 }: Props) {
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [sort, setSort] = useState<SortKey>('recent');
+  const [sortOpen, setSortOpen] = useState(false);
+  const [counters, setCounters] = useState<Record<string, Counters>>({});
+
+  // Restore saved sort from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('pixbyte_sort');
+      if (saved === 'recent' || saved === 'most_run' || saved === 'most_viewed') {
+        setSort(saved);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Persist sort changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('pixbyte_sort', sort);
+    } catch {
+      // ignore
+    }
+  }, [sort]);
+
+  // Fetch counters once on mount; graceful fallback if endpoint missing
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/counters')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.counters) setCounters(data.counters);
+      })
+      .catch(() => {
+        // ignore — counters stay as null/—
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -41,23 +99,39 @@ export default function LeftPanel({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const filteredAnimations = animations.filter(anim => {
-    // 1. Filter by category
-    if (activeCategory !== 'all' && anim.category !== activeCategory) return false;
-    
-    // 2. Filter by search query
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const matchName = anim.name.toLowerCase().includes(q);
-      const matchTag = anim.tags.some(t => t.toLowerCase().includes(q));
-      if (!matchName && !matchTag) return false;
+  const filteredAnimations = useMemo(() => {
+    const filtered = animations.filter((anim) => {
+      if (activeCategory !== 'all' && anim.category !== activeCategory) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const matchName = anim.name.toLowerCase().includes(q);
+        const matchTag = anim.tags.some((t) => t.toLowerCase().includes(q));
+        if (!matchName && !matchTag) return false;
+      }
+      if (!anim.supportedSizes.includes(activeSize)) return false;
+      return true;
+    });
+
+    if (sort === 'recent') {
+      // Newest first by createdAt; falls back to source order on equal dates
+      return [...filtered].sort((a, b) => {
+        if (a.createdAt === b.createdAt) return 0;
+        return a.createdAt < b.createdAt ? 1 : -1;
+      });
     }
+    if (sort === 'most_run' || sort === 'most_viewed') {
+      const key = sort === 'most_run' ? 'runs' : 'views';
+      return [...filtered].sort((a, b) => {
+        const av = counters[a.id]?.[key] ?? 0;
+        const bv = counters[b.id]?.[key] ?? 0;
+        return (bv ?? 0) - (av ?? 0);
+      });
+    }
+    return filtered;
+  }, [activeCategory, activeSize, searchQuery, sort, counters]);
 
-    // 3. Filter implicitly by size (only show if it supports activeSize)
-    if (!anim.supportedSizes.includes(activeSize)) return false;
-
-    return true;
-  });
+  const currentSortLabel =
+    SORT_OPTIONS.find((o) => o.value === sort)?.label ?? 'recent';
 
   return (
     <div className="flex flex-col h-full w-full lg:w-[52%] lg:border-r border-border bg-bg">
@@ -65,7 +139,7 @@ export default function LeftPanel({
       <div className="sticky top-0 bg-surface border-b border-border z-10">
         {/* Category Tabs */}
         <div className="flex overflow-x-auto border-b border-border hide-scrollbar">
-          {CATEGORIES.map(cat => (
+          {CATEGORIES.map((cat) => (
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
@@ -75,21 +149,52 @@ export default function LeftPanel({
                   : 'text-dim hover:text-text'
               }`}
             >
-              {"//"} {cat}
+              {'//'} {cat}
             </button>
           ))}
         </div>
-        
-        {/* Count Indicator */}
-        <div className="px-4 py-1 text-[10px] text-dim border-b border-border">
-          {"//"} {filteredAnimations.length} animations found
+
+        {/* Count + Sort */}
+        <div className="px-4 py-1 text-[10px] text-dim border-b border-border flex items-center justify-between gap-2">
+          <span>
+            {'//'} {filteredAnimations.length} animations found
+          </span>
+          <div className="relative">
+            <button
+              onClick={() => setSortOpen((v) => !v)}
+              onBlur={() => setTimeout(() => setSortOpen(false), 120)}
+              className="text-dim hover:text-accent transition-colors"
+            >
+              {'//'} sort: [{currentSortLabel} {sortOpen ? '▲' : '▼'}]
+            </button>
+            {sortOpen && (
+              <div className="absolute right-0 top-5 bg-surface border border-border z-20 flex flex-col min-w-[140px]">
+                {SORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onMouseDown={(e) => {
+                      // mousedown fires before blur → keeps menu open until commit
+                      e.preventDefault();
+                      setSort(opt.value);
+                      setSortOpen(false);
+                    }}
+                    className={`text-left px-3 py-1 text-[10px] hover:bg-accent/10 transition-colors ${
+                      sort === opt.value ? 'text-accent' : 'text-dim'
+                    }`}
+                  >
+                    {'//'} {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        
+
         {/* Sub-filters (Size & Search) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 gap-3">
           {/* Size Selector */}
           <div className="flex items-center space-x-2">
-            {SIZES.map(size => (
+            {SIZES.map((size) => (
               <button
                 key={size}
                 onClick={() => setActiveSize(size)}
@@ -123,13 +228,13 @@ export default function LeftPanel({
       <div className="flex-1 overflow-y-auto p-4">
         {filteredAnimations.length === 0 ? (
           <div className="text-dim text-sm text-center py-8">
-            {"//"} no animations found for query
+            {'//'} no animations found for query
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {filteredAnimations.map((anim) => {
               const isSelected = selectedAnimation.id === anim.id;
-              
+              const c = counters[anim.id];
               return (
                 <div
                   key={anim.id}
@@ -140,21 +245,43 @@ export default function LeftPanel({
                 >
                   {/* Canvas Preview Area */}
                   <div className="w-full flex justify-center py-2 bg-black border-b border-border">
-                    <OLEDCanvas 
-                      animation={anim} 
-                      size={activeSize} 
-                      scale={2} 
-                      showCounter={false} 
+                    <OLEDCanvas
+                      animation={anim}
+                      size={activeSize}
+                      scale={2}
+                      showCounter={false}
                     />
                   </div>
-                  
+
                   {/* Metadata */}
                   <div className="p-3">
-                    <div className={`text-xs mb-1 transition-colors ${isSelected ? 'text-accent' : 'text-text'}`}>
-                      {anim.name}
+                    <div className="flex items-center justify-between gap-2">
+                      <div
+                        className={`text-xs mb-1 transition-colors truncate ${
+                          isSelected ? 'text-accent' : 'text-text'
+                        }`}
+                      >
+                        {anim.name}
+                      </div>
+                      <Link
+                        href={`/a/${anim.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        title={`// open ${anim.name}`}
+                        className="text-dim hover:text-accent transition-colors text-[11px] px-1 shrink-0 border border-border hover:border-accent"
+                      >
+                        [→]
+                      </Link>
                     </div>
                     <div className="text-dim text-[11px]">
-                      {"//"} GFX · {anim.category === 'robot_eyes' ? 'rounded_rect' : `${anim.totalFrames} frames`} · {Math.round(1000/anim.fps)}ms
+                      {'//'} by {anim.creator} ·{' '}
+                      {anim.category === 'robot_eyes'
+                        ? 'rounded_rect'
+                        : `${anim.totalFrames} frames`}{' '}
+                      · {Math.round(1000 / anim.fps)}ms
+                    </div>
+                    <div className="text-dim text-[10px] mt-0.5">
+                      {'//'} {formatCount(c?.views ?? null)} views ·{' '}
+                      {formatCount(c?.runs ?? null)} runs
                     </div>
                   </div>
                 </div>

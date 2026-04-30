@@ -1,6 +1,9 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import { useSerial } from '@/context/SerialContext';
+
+const GITHUB_URL = 'https://github.com/ImpulseTechy/pixbyte';
 
 export default function Navbar() {
   const { isSupported, connectionState, portInfo, connect, disconnect } = useSerial();
@@ -40,8 +43,24 @@ export default function Navbar() {
           </span>
         </div>
         
-        <div className="flex items-center relative">
-          <button 
+        <div className="flex items-center relative gap-2">
+          <Link
+            href="/about"
+            title="// who built pixbyte"
+            className="inline-flex items-center border border-border text-dim hover:text-accent hover:border-accent transition-colors px-3 py-1 text-xs bg-surface"
+          >
+            [ about ]
+          </Link>
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noreferrer"
+            title="// view source on github"
+            className="hidden sm:inline-flex items-center border border-border text-dim hover:text-accent hover:border-accent transition-colors px-3 py-1 text-xs bg-surface"
+          >
+            [ ★ github ]
+          </a>
+          <button
             onClick={handleChipClick}
             disabled={connectionState === 'CONNECTING'}
             className={`flex items-center space-x-2 border px-3 py-1 bg-surface text-xs transition-colors cursor-pointer hover:border-accent ${chipContent.color} ${chipContent.border}`}
